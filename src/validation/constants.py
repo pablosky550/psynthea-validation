@@ -85,3 +85,14 @@ AGE_LABELS = [
     "75–84",
     "85+",
 ]
+
+# =============================================================================
+# Column names
+# =============================================================================
+
+PATIENT_ID_COLUMN = "Id"
+PATIENT_GENDER_COLUMN = "GENDER"
+PATIENT_BIRTHDATE_COLUMN = "BIRTHDATE"
+
+ENCOUNTER_PATIENT_COLUMN = "PATIENT"
+ENCOUNTER_CLASS_COLUMN = "ENCOUNTERCLASS"

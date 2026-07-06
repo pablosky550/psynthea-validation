@@ -6,8 +6,8 @@ This module computes descriptive demographic statistics from a ValidationCohort.
 The resulting metrics are used by statistical analyses, visualisations
 and validation reports.
 
-No statistical testing, plotting or report generation should be implemented
-in this module.
+No statistical hypothesis testing, plotting or report generation should
+be implemented in this module.
 """
 
 from dataclasses import dataclass
@@ -15,10 +15,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from validation.models import ValidationCohort
-
-from validation.constants import AGE_BANDS, AGE_LABELS
-
-
+from validation.utils import prepare_patients
 
 
 # =============================================================================
@@ -31,10 +28,16 @@ class DemographicMetrics:
     Descriptive demographic metrics of a synthetic cohort.
     """
 
+    # -------------------------------------------------------------------------
     # Cohort size
+    # -------------------------------------------------------------------------
+
     n_patients: int
 
+    # -------------------------------------------------------------------------
     # Age summary
+    # -------------------------------------------------------------------------
+
     mean_age: float
     median_age: float
     std_age: float
@@ -43,7 +46,10 @@ class DemographicMetrics:
     min_age: float
     max_age: float
 
+    # -------------------------------------------------------------------------
     # Percentiles
+    # -------------------------------------------------------------------------
+
     p05_age: float
     p10_age: float
     p25_age: float
@@ -52,14 +58,20 @@ class DemographicMetrics:
     p90_age: float
     p95_age: float
 
-    # Sex
+    # -------------------------------------------------------------------------
+    # Sex distribution
+    # -------------------------------------------------------------------------
+
     male_count: int
     female_count: int
 
     male_fraction: float
     female_fraction: float
 
+    # -------------------------------------------------------------------------
     # Distributions
+    # -------------------------------------------------------------------------
+
     age_distribution: pd.DataFrame
     age_band_distribution: pd.DataFrame
     population_pyramid: pd.DataFrame
@@ -89,18 +101,15 @@ def calculate_demographics(
     DemographicMetrics
     """
 
-    patients = cohort.patients.copy()
-
-    birthdate = pd.to_datetime(patients["BIRTHDATE"])
-
-    patients["AGE"] = (
-        (reference_date - birthdate).dt.days / 365.25
+    patients = prepare_patients(
+        cohort.patients,
+        reference_date,
     )
 
     age = patients["AGE"]
 
     # -------------------------------------------------------------------------
-    # Sex
+    # Sex distribution
     # -------------------------------------------------------------------------
 
     male = (patients["GENDER"] == "M").sum()
@@ -121,15 +130,8 @@ def calculate_demographics(
     )
 
     # -------------------------------------------------------------------------
-    # Age bands
+    # Age band distribution
     # -------------------------------------------------------------------------
-
-    patients["AGE_BAND"] = pd.cut(
-        age,
-        bins=AGE_BANDS,
-        labels=AGE_LABELS,
-        right=False,
-    )
 
     age_band_distribution = (
         patients["AGE_BAND"]
