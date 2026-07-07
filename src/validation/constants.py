@@ -96,3 +96,24 @@ PATIENT_BIRTHDATE_COLUMN = "BIRTHDATE"
 
 ENCOUNTER_PATIENT_COLUMN = "PATIENT"
 ENCOUNTER_CLASS_COLUMN = "ENCOUNTERCLASS"
+
+# =============================================================================
+# Condition column names
+# =============================================================================
+
+CONDITION_PATIENT_COLUMN = "PATIENT"
+CONDITION_CODE_COLUMN = "CODE"
+CONDITION_DESCRIPTION_COLUMN = "DESCRIPTION"
+CONDITION_START_COLUMN = "START"
+CONDITION_STOP_COLUMN = "STOP"
+
+# =============================================================================
+# Medication constants
+# =============================================================================
+
+MEDICATION_PATIENT_COLUMN = "PATIENT"
+MEDICATION_CODE_COLUMN = "CODE"
+MEDICATION_DESCRIPTION_COLUMN = "DESCRIPTION"
+MEDICATION_START_COLUMN = "START"
+MEDICATION_STOP_COLUMN = "STOP"
+MEDICATION_DISPENSES_COLUMN = "DISPENSES"
