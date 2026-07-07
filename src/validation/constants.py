@@ -139,3 +139,11 @@ OBSERVATION_DATE_COLUMN = "DATE"
 OBSERVATION_VALUE_COLUMN = "VALUE"
 OBSERVATION_UNITS_COLUMN = "UNITS"
 
+# =============================================================================
+# Quality metric constants
+# =============================================================================
+
+QUALITY_TABLE_COLUMN = "table"
+QUALITY_ISSUE_COLUMN = "issue"
+QUALITY_COUNT_COLUMN = "count"
+QUALITY_FRACTION_COLUMN = "fraction"
