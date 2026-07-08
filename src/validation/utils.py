@@ -13,7 +13,9 @@ from __future__ import annotations
 import pandas as pd
 
 from validation.constants import (
+    AGE_BAND_COLUMN,
     AGE_BANDS,
+    AGE_COLUMN,
     AGE_LABELS,
     PATIENT_BIRTHDATE_COLUMN,
 )
@@ -48,21 +50,23 @@ def prepare_patients(
     patients = patients.copy()
 
     birthdate = pd.to_datetime(
-        patients[PATIENT_BIRTHDATE_COLUMN]
+        patients[PATIENT_BIRTHDATE_COLUMN],
+        errors="coerce",
     )
 
-    patients["AGE"] = (
-        (reference_date - birthdate).dt.days / 365.25
+    patients[AGE_COLUMN] = (
+        (pd.Timestamp(reference_date) - birthdate).dt.days / 365.25
     )
 
-    patients["AGE_BAND"] = pd.cut(
-        patients["AGE"],
+    patients[AGE_BAND_COLUMN] = pd.cut(
+        patients[AGE_COLUMN],
         bins=AGE_BANDS,
         labels=AGE_LABELS,
         right=False,
     )
 
     return patients
+
 
 def safe_fraction(
     numerator: int,
@@ -147,7 +151,7 @@ def calculate_duration_days(
 
     return (
         stop
-        .fillna(reference_date)
+        .fillna(pd.Timestamp(reference_date))
         .sub(start)
         .dt.days
     )

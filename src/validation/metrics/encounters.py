@@ -19,6 +19,7 @@ from validation.models import ValidationCohort
 from validation.utils import prepare_patients
 from validation.constants import (
     PATIENT_ID_COLUMN,
+    AGE_BAND_COLUMN,
     PATIENT_GENDER_COLUMN,
     ENCOUNTER_PATIENT_COLUMN,
     ENCOUNTER_CLASS_COLUMN,
@@ -131,7 +132,7 @@ def calculate_encounters(
             patients[
                 [
                     PATIENT_ID_COLUMN,
-                    "AGE_BAND",
+                    AGE_BAND_COLUMN,
                 ]
             ],
             left_on=ENCOUNTER_PATIENT_COLUMN,
@@ -139,7 +140,7 @@ def calculate_encounters(
             how="left",
         )
         .groupby(
-            "AGE_BAND",
+            AGE_BAND_COLUMN,
             observed=False,
         )
         .size()

@@ -16,6 +16,11 @@ import pandas as pd
 
 from validation.models import ValidationCohort
 from validation.utils import prepare_patients
+from validation.constants import (
+    AGE_BAND_COLUMN,
+    AGE_COLUMN,
+    PATIENT_GENDER_COLUMN,
+)
 
 
 # =============================================================================
@@ -106,14 +111,14 @@ def calculate_demographics(
         reference_date,
     )
 
-    age = patients["AGE"]
+    age = patients[AGE_COLUMN]
 
     # -------------------------------------------------------------------------
     # Sex distribution
     # -------------------------------------------------------------------------
 
-    male = (patients["GENDER"] == "M").sum()
-    female = (patients["GENDER"] == "F").sum()
+    male = (patients[PATIENT_GENDER_COLUMN] == "M").sum()
+    female = (patients[PATIENT_GENDER_COLUMN] == "F").sum()
 
     # -------------------------------------------------------------------------
     # Age distribution
@@ -134,7 +139,7 @@ def calculate_demographics(
     # -------------------------------------------------------------------------
 
     age_band_distribution = (
-        patients["AGE_BAND"]
+        patients[AGE_BAND_COLUMN]
         .value_counts()
         .sort_index()
         .rename_axis("age_band")
@@ -149,8 +154,8 @@ def calculate_demographics(
         patients
         .groupby(
             [
-                "AGE_BAND",
-                "GENDER",
+                AGE_BAND_COLUMN,
+                PATIENT_GENDER_COLUMN,
             ],
             observed=False,
         )

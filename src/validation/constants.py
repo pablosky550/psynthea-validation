@@ -26,6 +26,7 @@ CSV_FILES = {
     "encounters": "encounters.csv",
     "conditions": "conditions.csv",
     "medications": "medications.csv",
+    "procedures": "procedures.csv",
     "observations": "observations.csv",
 }
 
@@ -54,6 +55,7 @@ DEFAULT_CONFIDENCE_LEVEL = 0.95
 
 DEFAULT_DPI = 300
 DEFAULT_FIGURE_FORMAT = "png"
+
 
 # =============================================================================
 # Demographic constants
@@ -86,19 +88,29 @@ AGE_LABELS = [
     "85+",
 ]
 
+AGE_COLUMN = "AGE"
+AGE_BAND_COLUMN = "AGE_BAND"
+
+
 # =============================================================================
-# Column names
+# Patient columns
 # =============================================================================
 
 PATIENT_ID_COLUMN = "Id"
 PATIENT_GENDER_COLUMN = "GENDER"
 PATIENT_BIRTHDATE_COLUMN = "BIRTHDATE"
 
+
+# =============================================================================
+# Encounter columns
+# =============================================================================
+
 ENCOUNTER_PATIENT_COLUMN = "PATIENT"
 ENCOUNTER_CLASS_COLUMN = "ENCOUNTERCLASS"
 
+
 # =============================================================================
-# Condition column names
+# Condition columns
 # =============================================================================
 
 CONDITION_PATIENT_COLUMN = "PATIENT"
@@ -107,8 +119,9 @@ CONDITION_DESCRIPTION_COLUMN = "DESCRIPTION"
 CONDITION_START_COLUMN = "START"
 CONDITION_STOP_COLUMN = "STOP"
 
+
 # =============================================================================
-# Medication constants
+# Medication columns
 # =============================================================================
 
 MEDICATION_PATIENT_COLUMN = "PATIENT"
@@ -118,8 +131,9 @@ MEDICATION_START_COLUMN = "START"
 MEDICATION_STOP_COLUMN = "STOP"
 MEDICATION_DISPENSES_COLUMN = "DISPENSES"
 
+
 # =============================================================================
-# Procedure constants
+# Procedure columns
 # =============================================================================
 
 PROCEDURE_PATIENT_COLUMN = "PATIENT"
@@ -129,21 +143,14 @@ PROCEDURE_START_COLUMN = "START"
 PROCEDURE_STOP_COLUMN = "STOP"
 PROCEDURE_BASE_COST_COLUMN = "BASE_COST"
 
+
 # =============================================================================
-# Observation constants
+# Observation columns
 # =============================================================================
+
 OBSERVATION_PATIENT_COLUMN = "PATIENT"
 OBSERVATION_CODE_COLUMN = "CODE"
 OBSERVATION_DESCRIPTION_COLUMN = "DESCRIPTION"
 OBSERVATION_DATE_COLUMN = "DATE"
 OBSERVATION_VALUE_COLUMN = "VALUE"
 OBSERVATION_UNITS_COLUMN = "UNITS"
-
-# =============================================================================
-# Quality metric constants
-# =============================================================================
-
-QUALITY_TABLE_COLUMN = "table"
-QUALITY_ISSUE_COLUMN = "issue"
-QUALITY_COUNT_COLUMN = "count"
-QUALITY_FRACTION_COLUMN = "fraction"

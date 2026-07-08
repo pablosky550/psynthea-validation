@@ -32,18 +32,6 @@ from validation.constants import (
     CONDITION_STOP_COLUMN,
 )
 
-from validation.utils import (
-    prepare_patients,
-    safe_fraction,
-    coerce_datetime_columns,
-    calculate_age_years,
-    calculate_duration_days,
-    count_distinct_events_per_patient,
-    align_patient_event_counts,
-    top_events,
-    first_display_value,
-)
-
 # =============================================================================
 # Models
 # =============================================================================
