@@ -58,6 +58,7 @@ class StatisticalTestResult:
     alpha: float = DEFAULT_SIGNIFICANCE_LEVEL
     significant: bool | None = None
     interpretation: str | None = None
+    notes: str | None = None
 
 
 @dataclass(slots=True)
@@ -69,6 +70,18 @@ class MultipleTestingCorrectionResult:
     method: str
     alpha: float
     results: pd.DataFrame
+
+    @property
+    def adjusted_p_values(self) -> pd.Series:
+        """Return Benjamini-Hochberg adjusted p-values."""
+
+        return self.results["adjusted_p_value"]
+
+    @property
+    def rejected(self) -> pd.Series:
+        """Return whether each null hypothesis is rejected after correction."""
+
+        return self.results["significant"]
 
 
 @dataclass(slots=True)
@@ -1243,6 +1256,29 @@ def statistical_results_to_dataframe(
     )
 
 
+def binary_association(
+    synthea_events: int,
+    synthea_total: int,
+    psynthea_events: int,
+    psynthea_total: int,
+    confidence_level: float = DEFAULT_CONFIDENCE_LEVEL,
+) -> BinaryAssociationResult:
+    """
+    Return binary epidemiological association measures.
+
+    This is the public alias used by the comparison layer. It delegates to
+    ``binary_association_measures`` to keep the implementation centralized.
+    """
+
+    return binary_association_measures(
+        synthea_events=synthea_events,
+        synthea_total=synthea_total,
+        psynthea_events=psynthea_events,
+        psynthea_total=psynthea_total,
+        confidence_level=confidence_level,
+    )
+
+
 def binary_association_to_dataframe(
     result: BinaryAssociationResult,
 ) -> pd.DataFrame:
@@ -1282,6 +1318,7 @@ __all__ = [
     "MultipleTestingCorrectionResult",
     "StatisticalTestResult",
     "benjamini_hochberg",
+    "binary_association",
     "binary_association_measures",
     "binary_association_to_dataframe",
     "binary_event_tests",
