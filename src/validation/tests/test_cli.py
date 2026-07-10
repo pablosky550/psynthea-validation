@@ -1,0 +1,318 @@
+"""Tests for transactional validation command-line orchestration."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from io import StringIO
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from validation.cli import (
+    ArtifactPersistenceError,
+    ExitCode,
+    InputDataError,
+    PipelineExecutionError,
+    ValidationRunArtifacts,
+    build_parser,
+    load_config,
+    main,
+    run_validation,
+)
+from validation.comparison.module_validation import ModuleValidationResult
+from validation.comparison.statistical_comparison import ModuleStatisticalComparisonResult
+from validation.config import (
+    CohortInputConfig,
+    ConfigurationError,
+    ModuleConfig,
+    OutputConfig,
+    PresentationConfig,
+    StatisticalConfig,
+    ValidationRunConfig,
+)
+from validation.models import ValidationCohort
+
+
+def _write_patients(directory: Path) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"Id": "P1", "GENDER": "M", "BIRTHDATE": "1980-01-01"}]).to_csv(
+        directory / "patients.csv",
+        index=False,
+    )
+
+
+def _config(tmp_path: Path, *, overwrite: bool = False) -> ValidationRunConfig:
+    synthea = tmp_path / "synthea"
+    psynthea = tmp_path / "psynthea"
+    _write_patients(synthea)
+    _write_patients(psynthea)
+    return ValidationRunConfig(
+        inputs=CohortInputConfig(synthea, psynthea),
+        output=OutputConfig(tmp_path / "output", overwrite=overwrite),
+        modules=(
+            ModuleConfig(
+                "Hypertension",
+                expected_condition_terms=("hypertension",),
+            ),
+        ),
+        statistics=StatisticalConfig(alpha=0.05, top_n_codes=5),
+        presentation=PresentationConfig(figure_format="png", dpi=72),
+        run_name="test-run",
+    )
+
+
+def _comparison(tmp_path: Path, *, significant: int = 0) -> ModuleStatisticalComparisonResult:
+    cohort = ValidationCohort(
+        source="synthea",
+        output_path=tmp_path,
+        patients=pd.DataFrame(),
+        encounters=pd.DataFrame(),
+        conditions=pd.DataFrame(),
+        medications=pd.DataFrame(),
+        procedures=pd.DataFrame(),
+        observations=pd.DataFrame(),
+    )
+    validation = ModuleValidationResult(
+        module_name="Hypertension",
+        synthea_cohort=cohort,
+        psynthea_cohort=cohort,
+        table_status=pd.DataFrame([{"table": "patients"}]),
+        clinical_signal=pd.DataFrame([{"domain": "conditions"}]),
+        distributional_similarity=pd.DataFrame([{"domain": "conditions"}]),
+        issues=pd.DataFrame(columns=["issue"]),
+        summary=pd.DataFrame([{"status": "comparable"}]),
+    )
+    summary = pd.DataFrame(
+        [{
+            "module_name": "Hypertension",
+            "validation_status": "comparable",
+            "valid_for_statistical_comparison": True,
+            "skipped": False,
+            "skip_reason": None,
+            "continuous_test_count": 0,
+            "categorical_test_count": 0,
+            "prevalence_test_count": 0,
+            "distribution_test_count": 0,
+            "significant_test_count": significant,
+            "significant_after_fdr_count": 0,
+            "mean_jensen_shannon_divergence": None,
+        }]
+    )
+    return ModuleStatisticalComparisonResult(
+        module_name="Hypertension",
+        validation=validation,
+        continuous_tests=pd.DataFrame(),
+        categorical_tests=pd.DataFrame(),
+        prevalence_tests=pd.DataFrame(),
+        distribution_tests=pd.DataFrame(),
+        summary=summary,
+    )
+
+
+def _patch_success_pipeline(monkeypatch, comparison: ModuleStatisticalComparisonResult) -> None:
+    monkeypatch.setattr("validation.cli.load_synthea", lambda path: object())
+    monkeypatch.setattr("validation.cli.load_psynthea", lambda path: object())
+    monkeypatch.setattr(
+        "validation.cli.compare_module_statistics",
+        lambda **kwargs: comparison,
+    )
+    monkeypatch.setattr("validation.cli._write_figures", lambda comparisons, config: [])
+
+
+def test_exit_codes_are_stable() -> None:
+    assert tuple(int(code) for code in ExitCode) == (0, 1, 2, 3, 4, 5, 130)
+
+
+def test_main_invalid_arguments_returns_two_and_uses_injected_stderr() -> None:
+    stderr = StringIO()
+    code = main([], stdout=StringIO(), stderr=stderr)
+    assert code == ExitCode.INVALID_ARGUMENTS
+    assert "usage:" in stderr.getvalue()
+    assert "--config" in stderr.getvalue()
+
+
+def test_main_help_returns_success_and_uses_injected_stdout() -> None:
+    stdout = StringIO()
+    code = main(["--help"], stdout=stdout, stderr=StringIO())
+    assert code == ExitCode.SUCCESS
+    assert "--validate-only" in stdout.getvalue()
+    assert "--no-plots" in stdout.getvalue()
+
+
+def test_build_parser_version_uses_schema_constant() -> None:
+    stdout = StringIO()
+    parser = build_parser(stdout=stdout, stderr=StringIO())
+    with pytest.raises(Exception) as error:
+        parser.parse_args(["--version"])
+    assert getattr(error.value, "status") == 0
+    assert "config schema 1" in stdout.getvalue()
+
+
+def test_load_config_round_trip(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    loaded = load_config(path)
+    assert loaded == config
+    assert loaded.scientific_fingerprint == config.scientific_fingerprint
+
+
+def test_load_config_missing_file_is_input_error(tmp_path: Path) -> None:
+    with pytest.raises(InputDataError, match="not found"):
+        load_config(tmp_path / "missing.json")
+
+
+def test_load_config_reports_json_location(tmp_path: Path) -> None:
+    path = tmp_path / "broken.json"
+    path.write_text('{"inputs":', encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="line 1"):
+        load_config(path)
+
+
+def test_validate_only_does_not_call_run_validation(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    monkeypatch.setattr(
+        "validation.cli.run_validation",
+        lambda *args, **kwargs: pytest.fail("run_validation must not be called"),
+    )
+    stdout = StringIO()
+    code = main(["--config", str(path), "--validate-only"], stdout=stdout, stderr=StringIO())
+    assert code == ExitCode.SUCCESS
+    assert "validation succeeded" in stdout.getvalue()
+
+
+def test_main_maps_pipeline_error_to_five(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    monkeypatch.setattr(
+        "validation.cli.run_validation",
+        lambda *args, **kwargs: (_ for _ in ()).throw(PipelineExecutionError("boom")),
+    )
+    stderr = StringIO()
+    code = main(["--config", str(path)], stderr=stderr)
+    assert code == ExitCode.PIPELINE_ERROR
+    assert "boom" in stderr.getvalue()
+
+
+def test_scientific_warning_still_returns_success(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
+    output = config.output.root_dir
+    output.mkdir()
+    manifest = output / "run_manifest.json"
+    manifest.write_text(
+        json.dumps({"module_results": [{"decision": "warning"}]}),
+        encoding="utf-8",
+    )
+    artifacts = ValidationRunArtifacts(
+        report_path=output / "validation_report.md",
+        manifest_path=manifest,
+        resolved_config_path=output / "resolved_config.json",
+        table_paths=(),
+        figure_paths=(),
+        comparisons=(_comparison(tmp_path, significant=1),),
+    )
+    monkeypatch.setattr("validation.cli.run_validation", lambda *a, **k: artifacts)
+    stdout = StringIO()
+    code = main(["--config", str(path)], stdout=stdout, stderr=StringIO())
+    assert code == ExitCode.SUCCESS
+    assert "warning=1" in stdout.getvalue()
+
+
+def test_run_validation_persists_complete_audit_bundle(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    comparison = _comparison(tmp_path)
+    _patch_success_pipeline(monkeypatch, comparison)
+
+    artifacts = run_validation(
+        config,
+        generated_at=datetime(2026, 7, 10, 10, 0, tzinfo=UTC),
+        config_source=tmp_path / "config.json",
+    )
+
+    assert artifacts.report_path.exists()
+    assert artifacts.manifest_path.exists()
+    assert artifacts.resolved_config_path.exists()
+    assert len(artifacts.table_paths) == 10
+    assert all(path.is_relative_to(config.output.root_dir) for path in artifacts.table_paths)
+
+    manifest = json.loads(artifacts.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["configuration_fingerprint"] == config.configuration_fingerprint
+    assert manifest["scientific_fingerprint"] == config.scientific_fingerprint
+    assert manifest["decision_counts"]["pass"] == 1
+    assert manifest["artefact_counts"]["tables"] == 10
+    assert manifest["module_results"][0]["module_name"] == "Hypertension"
+    assert manifest["completed_at"]
+    assert manifest["duration_seconds"] >= 0
+    assert manifest["python_version"]
+
+
+def test_transaction_preserves_previous_run_when_new_run_fails(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path, overwrite=True)
+    config.output.root_dir.mkdir(parents=True)
+    previous_report = config.output.report_path
+    previous_report.write_text("previous valid report", encoding="utf-8")
+    comparison = _comparison(tmp_path)
+    monkeypatch.setattr("validation.cli.load_synthea", lambda path: object())
+    monkeypatch.setattr("validation.cli.load_psynthea", lambda path: object())
+    monkeypatch.setattr("validation.cli.compare_module_statistics", lambda **kwargs: comparison)
+    monkeypatch.setattr(
+        "validation.cli._write_report",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ArtifactPersistenceError("write failed")),
+    )
+
+    with pytest.raises(ArtifactPersistenceError, match="write failed"):
+        run_validation(config)
+
+    assert previous_report.read_text(encoding="utf-8") == "previous valid report"
+    assert not list(tmp_path.glob(".output.staging-*"))
+    assert not list(tmp_path.glob(".output.backup-*"))
+
+
+def test_successful_overwrite_replaces_previous_run(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path, overwrite=True)
+    config.output.root_dir.mkdir(parents=True)
+    stale = config.output.root_dir / "stale.txt"
+    stale.write_text("old", encoding="utf-8")
+    _patch_success_pipeline(monkeypatch, _comparison(tmp_path))
+
+    artifacts = run_validation(config)
+
+    assert artifacts.report_path.exists()
+    assert not stale.exists()
+    assert not list(tmp_path.glob(".output.backup-*"))
+
+
+def test_comparison_error_includes_module_name(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    monkeypatch.setattr("validation.cli.load_synthea", lambda path: object())
+    monkeypatch.setattr("validation.cli.load_psynthea", lambda path: object())
+    monkeypatch.setattr(
+        "validation.cli.compare_module_statistics",
+        lambda **kwargs: (_ for _ in ()).throw(ValueError("bad test")),
+    )
+
+    with pytest.raises(PipelineExecutionError, match="Hypertension"):
+        run_validation(config)
+
+
+def test_no_tables_and_no_plots_create_zero_optional_artifacts(monkeypatch, tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    _patch_success_pipeline(monkeypatch, _comparison(tmp_path))
+
+    artifacts = run_validation(
+        config,
+        generate_tables=False,
+        generate_plots=False,
+    )
+
+    assert artifacts.table_paths == ()
+    assert artifacts.figure_paths == ()
+    manifest = json.loads(artifacts.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["artefact_counts"] == {"figures": 0, "tables": 0}
