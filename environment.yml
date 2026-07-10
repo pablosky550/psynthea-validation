@@ -2,21 +2,24 @@ name: psynthea-validation
 
 channels:
   - conda-forge
-  - defaults
 
 dependencies:
-  - python=3.12
+  # Runtime
+  - python>=3.12,<3.13
+  - numpy>=2.0,<3.0
+  - pandas>=2.2,<3.0
+  - scipy>=1.14,<2.0
+  - matplotlib>=3.9,<4.0
 
-  - pandas
-  - numpy
-  - scipy
-  - matplotlib
+  # Testing and quality assurance
+  - pytest>=9.0,<10.0
+  - pytest-cov>=6.0,<8.0
+  - coverage>=7.6,<8.0
 
-  - jupyter
-  - ipykernel
-  - pytest
-
-  - pip
+  # Packaging
+  - pip>=24.3
+  - setuptools>=75
+  - wheel>=0.45
 
   - pip:
-      - openpyxl
+      - --editable .
