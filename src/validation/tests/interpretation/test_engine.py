@@ -23,6 +23,15 @@ from validation.interpretation.models import (
     InterpretationFinding,
     Severity,
 )
+from validation.interpretation.rules.clinical import DEFAULT_CLINICAL_RULES
+from validation.interpretation.rules.epidemiological import (
+    DEFAULT_EPIDEMIOLOGICAL_RULES,
+)
+from validation.interpretation.rules.spanish_adaptation import (
+    DEFAULT_SPANISH_ADAPTATION_RULES,
+)
+from validation.interpretation.rules.statistical import DEFAULT_STATISTICAL_RULES
+from validation.interpretation.rules.structural import DEFAULT_STRUCTURAL_RULES
 from validation.interpretation.rules.base import (
     DerivedEvidence,
     Inference,
@@ -284,12 +293,50 @@ def test_default_registry_contains_every_completed_rule_family_and_is_constructi
     engine = InterpretationEngine()
     rule_ids = set(engine.execution_order)
 
-    assert len(DEFAULT_INTERPRETATION_RULES) == 15
-    assert len(rule_ids) == 15
+    assert len(DEFAULT_INTERPRETATION_RULES) == 18
+    assert len(rule_ids) == 18
     assert "STRUCT.EVIDENCE_INTEGRITY" in rule_ids
     assert "STAT.READINESS" in rule_ids
     assert "CLINICAL.SIGNAL_PRESERVATION" in rule_ids
+    assert "EPI.DEMOGRAPHIC_PROFILE" in rule_ids
+    assert "EPI.PREVALENCE_PROFILE" in rule_ids
+    assert "EPI.RELATIONSHIP_PRESERVATION" in rule_ids
     assert "SPANISH.EVIDENCE_INTEGRITY" in rule_ids
+
+
+def test_default_registry_is_the_exact_ordered_concatenation_of_rule_families() -> None:
+    expected = (
+        *DEFAULT_STRUCTURAL_RULES,
+        *DEFAULT_STATISTICAL_RULES,
+        *DEFAULT_CLINICAL_RULES,
+        *DEFAULT_EPIDEMIOLOGICAL_RULES,
+        *DEFAULT_SPANISH_ADAPTATION_RULES,
+    )
+
+    assert DEFAULT_INTERPRETATION_RULES == expected
+    assert tuple(rule.rule_id for rule in DEFAULT_INTERPRETATION_RULES) == (
+        *(rule.rule_id for rule in DEFAULT_STRUCTURAL_RULES),
+        *(rule.rule_id for rule in DEFAULT_STATISTICAL_RULES),
+        *(rule.rule_id for rule in DEFAULT_CLINICAL_RULES),
+        *(rule.rule_id for rule in DEFAULT_EPIDEMIOLOGICAL_RULES),
+        *(rule.rule_id for rule in DEFAULT_SPANISH_ADAPTATION_RULES),
+    )
+
+
+def test_epidemiological_rules_execute_after_statistical_and_clinical_families() -> None:
+    order = InterpretationEngine().execution_order
+    last_statistical = max(order.index(rule.rule_id) for rule in DEFAULT_STATISTICAL_RULES)
+    last_clinical = max(order.index(rule.rule_id) for rule in DEFAULT_CLINICAL_RULES)
+    first_epidemiological = min(
+        order.index(rule.rule_id) for rule in DEFAULT_EPIDEMIOLOGICAL_RULES
+    )
+    first_spanish = min(
+        order.index(rule.rule_id) for rule in DEFAULT_SPANISH_ADAPTATION_RULES
+    )
+
+    assert first_epidemiological > last_statistical
+    assert first_epidemiological > last_clinical
+    assert first_spanish > first_epidemiological
 
 
 def test_execution_object_exposes_duration_and_safe_lookup() -> None:

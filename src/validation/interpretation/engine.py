@@ -35,6 +35,9 @@ from validation.interpretation.rules.base import (
     StageStatus,
 )
 from validation.interpretation.rules.clinical import DEFAULT_CLINICAL_RULES
+from validation.interpretation.rules.epidemiological import (
+    DEFAULT_EPIDEMIOLOGICAL_RULES,
+)
 from validation.interpretation.rules.spanish_adaptation import (
     DEFAULT_SPANISH_ADAPTATION_RULES,
 )
@@ -50,7 +53,7 @@ __all__ = [
     "InterpretationEngineConfig",
 ]
 
-ENGINE_VERSION: Final = "1.1.0"
+ENGINE_VERSION: Final = "1.2.0"
 _RESERVED_METADATA_KEYS: Final = frozenset({"engine", "rule_evaluations", "evidence_lineage"})
 _IDENTIFIER_PATTERN: Final = compile_pattern(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 
@@ -248,6 +251,7 @@ DEFAULT_INTERPRETATION_RULES: Final = (
     *DEFAULT_STRUCTURAL_RULES,
     *DEFAULT_STATISTICAL_RULES,
     *DEFAULT_CLINICAL_RULES,
+    *DEFAULT_EPIDEMIOLOGICAL_RULES,
     *DEFAULT_SPANISH_ADAPTATION_RULES,
 )
 

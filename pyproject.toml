@@ -44,15 +44,20 @@ exclude = ["validation.tests*"]
 
 
 [tool.pytest.ini_options]
-minversion = "9.0"
-pythonpath = ["src"]
 testpaths = ["src/validation/tests"]
-python_files = ["test_*.py"]
+pythonpath = ["src"]
 addopts = [
     "--strict-config",
     "--strict-markers",
+    "--import-mode=importlib",
     "-ra",
 ]
+
+pytest \
+  --cov=validation \
+  --cov-branch \
+  --cov-report=term-missing \
+  --cov-report=xml
 
 
 [tool.coverage.run]
