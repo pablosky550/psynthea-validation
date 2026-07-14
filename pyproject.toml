@@ -44,20 +44,19 @@ exclude = ["validation.tests*"]
 
 
 [tool.pytest.ini_options]
+minversion = "9.0"
 testpaths = ["src/validation/tests"]
 pythonpath = ["src"]
 addopts = [
     "--strict-config",
     "--strict-markers",
     "--import-mode=importlib",
+    "--cov=validation",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
     "-ra",
 ]
-
-pytest \
-  --cov=validation \
-  --cov-branch \
-  --cov-report=term-missing \
-  --cov-report=xml
 
 
 [tool.coverage.run]
@@ -77,3 +76,7 @@ exclude_also = [
     "if __name__ == .__main__.:",
     "raise NotImplementedError",
 ]
+
+
+[tool.coverage.xml]
+output = "coverage.xml"
