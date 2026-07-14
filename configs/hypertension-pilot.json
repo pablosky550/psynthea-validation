@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "run_name": "hypertension-pilot-seed-42-n-100",
+  "inputs": {
+    "synthea_dir": "/Users/pgt01/IRYCIS/validation-experiment/output/hypertension/synthea/csv",
+    "psynthea_dir": "/Users/pgt01/IRYCIS/validation-experiment/output/hypertension/psynthea"
+  },
+  "output": {
+    "root_dir": "/Users/pgt01/IRYCIS/validation-experiment/results/hypertension-pilot",
+    "report_filename": "validation_report.md",
+    "figures_subdir": "figures",
+    "tables_subdir": "tables",
+    "overwrite": true
+  },
+  "modules": [
+    {
+      "name": "Hypertension",
+      "expected_condition_terms": [
+        "hypertension",
+        "59621000"
+      ],
+      "expected_medication_terms": [],
+      "expected_procedure_terms": [],
+      "expected_observation_terms": [
+        "blood pressure",
+        "systolic",
+        "diastolic"
+      ]
+    }
+  ],
+  "statistics": {
+    "alpha": 0.05,
+    "confidence_level": 0.95,
+    "top_n_codes": 25,
+    "fdr_method": "benjamini-hochberg"
+  },
+  "presentation": {
+    "top_n_prevalence_differences": 10,
+    "top_n_prevalence_plots": 15,
+    "top_n_effect_sizes": 20,
+    "top_n_p_values": 25,
+    "prevalence_rank_by": "absolute_difference",
+    "clinical_priority": [],
+    "prevalence_equivalence_margin": null,
+    "continuous_effect_margin": 0.2,
+    "categorical_effect_margin": 0.1,
+    "annotate_values": true,
+    "figure_format": "png",
+    "dpi": 300
+  },
+  "reference_date": "2024-12-31"
+}
