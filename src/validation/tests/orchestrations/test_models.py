@@ -144,6 +144,7 @@ def _required_stages() -> tuple[PipelineStageResult, ...]:
             ExperimentStage.COHORT_NORMALIZATION,
             ExperimentStage.VALIDATION,
             ExperimentStage.KNOWLEDGE_ENRICHMENT,
+            ExperimentStage.ROOT_CAUSE_ANALYSIS,
             ExperimentStage.REPORT_GENERATION,
             ExperimentStage.MANIFEST_FINALIZATION,
         )

@@ -287,10 +287,61 @@ class KnowledgeHandler:
 
 
 @dataclass(frozen=True)
+class RootCauseHandler:
+    stage: ExperimentStage = ExperimentStage.ROOT_CAUSE_ANALYSIS
+
+    def execute(self, context) -> StageOutput:
+        payload = {
+            "schema_version": "1.0",
+            "experiment_id": context.config.id,
+            "run_id": context.run_id,
+            "status": "not_applicable",
+            "confidence": "not_assessed",
+            "findings": [],
+            "summary": (
+                "No clinically relevant divergence required "
+                "causal investigation."
+            ),
+        }
+
+        path = context.workspace.write_json(
+            "root_cause/root_cause_result.json",
+            payload,
+        )
+
+        artifact = context.workspace.artifact_reference(
+            artifact_id="root_cause.result",
+            kind=ArtifactKind.ROOT_CAUSE_RESULT,
+            path=path,
+            media_type="application/json",
+            producer="root_cause_engine",
+        )
+
+        return StageOutput(
+            artifacts=(artifact,),
+            summary="Root-cause analysis completed.",
+            metadata={
+                "root_cause_status": "not_applicable",
+                "finding_count": 0,
+            },
+        )
+
+@dataclass(frozen=True)
 class ReportHandler:
     stage: ExperimentStage = ExperimentStage.REPORT_GENERATION
 
     def execute(self, context) -> StageOutput:
+        root_cause_artifacts = tuple(
+            artifact
+            for artifact in context.artifacts
+            if artifact.kind is ArtifactKind.ROOT_CAUSE_RESULT
+        )
+
+        if len(root_cause_artifacts) != 1:
+            raise RuntimeError(
+                "Expected exactly one root-cause result before report generation."
+            )
+        
         html = """<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Hypertension validation</title></head>
@@ -308,6 +359,10 @@ class ReportHandler:
                 "experiment_id": context.config.id,
                 "run_id": context.run_id,
                 "decision": "PASS",
+                "root_cause": {
+                    "status": "not_applicable",
+                    "artifact_id": root_cause_artifacts[0].id,
+                },
                 "artifact_count_before_report": len(context.artifacts),
             },
         )
@@ -345,6 +400,7 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
             CohortNormalizationHandler(),
             ValidationHandler(),
             KnowledgeHandler(),
+            RootCauseHandler(),
             ReportHandler(),
         ),
         runner_factory=_runner_factory,
@@ -379,6 +435,7 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
         ExperimentStage.COHORT_NORMALIZATION,
         ExperimentStage.VALIDATION,
         ExperimentStage.KNOWLEDGE_ENRICHMENT,
+        ExperimentStage.ROOT_CAUSE_ANALYSIS,
         ExperimentStage.REPORT_GENERATION,
         ExperimentStage.MANIFEST_FINALIZATION,
     }
@@ -390,9 +447,9 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
 
     # The global artifact catalogue contains simulator, normalized, validation,
     # knowledge and report products, but not its own self-referential manifest.
-    assert len(result.artifacts) == 10
-    assert len({artifact.id for artifact in result.artifacts}) == 10
-    assert len({artifact.path for artifact in result.artifacts}) == 10
+    assert len(result.artifacts) == 11
+    assert len({artifact.id for artifact in result.artifacts}) == 11
+    assert len({artifact.path for artifact in result.artifacts}) == 11
     assert all(artifact.sha256 for artifact in result.artifacts)
     assert all(artifact.size_bytes is not None for artifact in result.artifacts)
 
@@ -409,6 +466,7 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
         "report/report.html",
         "report/report.json",
         "manifest.json",
+        "root_cause/root_cause_result.json",
     }
     assert expected_files.issubset(
         {
@@ -425,9 +483,21 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
     report = json.loads(
         (workspace.root / "report/report.json").read_text(encoding="utf-8")
     )
+
+    root_cause = json.loads(
+        (
+            workspace.root
+            / "root_cause/root_cause_result.json"
+        ).read_text(encoding="utf-8")
+    )
+
     assert validation["status"] == "PASS"
     assert validation["metrics"]["hypertension_prevalence_absolute_difference"] == 0.0
     assert report["decision"] == "PASS"
+    assert root_cause["status"] == "not_applicable"
+    assert root_cause["findings"] == []
+    assert report["root_cause"]["status"] == "not_applicable"
+    assert report["root_cause"]["artifact_id"] == "root_cause.result"
 
     # Manifest exists, matches its external ArtifactReference and is structurally
     # bound to the same experiment/configuration.
@@ -438,13 +508,13 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
     )
     payload = manifest_service.verify(expected_reference=execution.manifest)
 
-    assert payload["schema_version"] == 2
+    assert payload["schema_version"] == 3
     assert payload["experiment_id"] == config.id
     assert payload["run_id"] == "acceptance-run-001"
     assert payload["workspace"] == "."
     assert payload["result"]["status"] == "succeeded"
     assert payload["result"]["config"] == payload["config"]
-    assert len(payload["result"]["artifacts"]) == 10
+    assert len(payload["result"]["artifacts"]) == 11
 
     # Reopening the workspace and re-verifying the manifest proves persistence,
     # ownership, hashing and portability after the orchestrator has returned.
@@ -457,3 +527,26 @@ def test_complete_phase_2b_experiment_end_to_end(tmp_path: Path) -> None:
         reopened_manifest.verify(expected_reference=execution.manifest)
         == payload
     )
+
+
+@dataclass(frozen=True)
+class FakeRootCauseHandler:
+    stage: ExperimentStage = ExperimentStage.ROOT_CAUSE_ANALYSIS
+
+    def execute(self, context) -> StageOutput:
+        path = context.workspace.write_text(
+            "root_cause/result.json",
+            '{"status":"not_applicable"}\n',
+        )
+        artifact = context.workspace.artifact_reference(
+            artifact_id="root_cause.result",
+            kind=ArtifactKind.ROOT_CAUSE_RESULT,
+            path=path,
+            media_type="application/json",
+            producer="fake_root_cause_engine",
+        )
+
+        return StageOutput(
+            artifacts=(artifact,),
+            summary="Root-cause analysis completed.",
+        )

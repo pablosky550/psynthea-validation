@@ -1,9 +1,9 @@
-"""Canonical experiment-manifest persistence for Phase 2B orchestration.
+"""Canonical manifest persistence for reproducible validation experiments.
 
 The manifest is the immutable, portable audit record of one experiment run. It
 captures the requested configuration, execution result and references to every
-persisted artefact without executing simulations or reimplementing any Phase 1
-or Phase 2A functionality.
+persisted artefact without executing simulations or reimplementing validation,
+scientific knowledge, root-cause analysis or report-rendering functionality.
 
 Scientific guarantees
 ---------------------
@@ -53,7 +53,7 @@ __all__ = [
     "ManifestSerializationError",
 ]
 
-MANIFEST_SCHEMA_VERSION: Final[int] = 2
+MANIFEST_SCHEMA_VERSION: Final[int] = 3
 MANIFEST_RELATIVE_PATH: Final[Path] = Path("manifest.json")
 _MANIFEST_MEDIA_TYPE: Final[str] = "application/json"
 _MANIFEST_PRODUCER: Final[str] = "experiment_orchestrator"

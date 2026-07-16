@@ -94,11 +94,12 @@ _INTERNAL_STAGES: Final = frozenset(
     }
 )
 
-_EXTERNAL_STAGE_ORDER: Final = (
+_EXTERNAL_STAGE_ORDER: Final[tuple[ExperimentStage, ...]] = (
     ExperimentStage.COHORT_LOADING,
     ExperimentStage.COHORT_NORMALIZATION,
     ExperimentStage.VALIDATION,
     ExperimentStage.KNOWLEDGE_ENRICHMENT,
+    ExperimentStage.ROOT_CAUSE_ANALYSIS,
     ExperimentStage.REPORT_GENERATION,
 )
 
@@ -919,7 +920,7 @@ class ExperimentOrchestrator:
                 )
             if stage not in _EXTERNAL_STAGE_ORDER:
                 raise ValueError(
-                    f"{stage.value} is not a supported external Phase 2B stage."
+                    f"{stage.value} is not a supported external orchestration stage."
                 )
             execute = getattr(handler, "execute", None)
             if not callable(execute):

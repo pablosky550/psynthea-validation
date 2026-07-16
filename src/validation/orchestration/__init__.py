@@ -112,6 +112,11 @@ from .workspace import (
     ExperimentWorkspace,
 )
 
+from validation.orchestration.adapters import (
+    RootCauseRequestAdapter,
+    RootCauseRequestSource,
+)
+
 __all__ = [
     # Domain
     "ExperimentConfig",
@@ -164,4 +169,7 @@ __all__ = [
     "OrchestrationIntegrityError",
     "OrchestrationStageError",
     "OrchestrationFinalizationError",
+
+    "RootCauseRequestAdapter",
+    "RootCauseRequestSource",
 ]

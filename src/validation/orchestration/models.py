@@ -69,7 +69,7 @@ class ExecutionStatus(str, Enum):
 
 
 class ExperimentStage(str, Enum):
-    """Canonical stages coordinated by the Phase 2B experiment pipeline."""
+    """Canonical stages coordinated by the experiment pipeline."""
 
     WORKSPACE_INITIALIZATION = "workspace_initialization"
     SYNTHEA_EXECUTION = "synthea_execution"
@@ -78,6 +78,7 @@ class ExperimentStage(str, Enum):
     COHORT_NORMALIZATION = "cohort_normalization"
     VALIDATION = "validation"
     KNOWLEDGE_ENRICHMENT = "knowledge_enrichment"
+    ROOT_CAUSE_ANALYSIS = "root_cause_analysis"
     REPORT_GENERATION = "report_generation"
     MANIFEST_FINALIZATION = "manifest_finalization"
 
@@ -92,6 +93,7 @@ class ArtifactKind(str, Enum):
     NORMALIZED_DATASET = "normalized_dataset"
     VALIDATION_RESULT = "validation_result"
     KNOWLEDGE_RESULT = "knowledge_result"
+    ROOT_CAUSE_RESULT = "root_cause_result"
     REPORT = "report"
     FIGURE = "figure"
     EVIDENCE = "evidence"
@@ -132,6 +134,7 @@ _REQUIRED_SUCCESS_STAGES = frozenset(
         ExperimentStage.COHORT_NORMALIZATION,
         ExperimentStage.VALIDATION,
         ExperimentStage.KNOWLEDGE_ENRICHMENT,
+        ExperimentStage.ROOT_CAUSE_ANALYSIS,
         ExperimentStage.REPORT_GENERATION,
         ExperimentStage.MANIFEST_FINALIZATION,
     }

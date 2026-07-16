@@ -602,11 +602,13 @@ class RootCauseEngine:
             lambda result: len(result.signals),
         )
         if not signal_extraction.signals:
-            raise RootCauseInputError(
-                "Root-cause analysis requires at least one discrepancy signal.",
-                context={"request_id": request.id},
-            )
-
+            return self._not_applicable_result(
+                request=request,
+                inputs=inputs,
+                stages=stages,
+                evidence_collection=evidence_collection,
+                signal_extraction=signal_extraction,
+            )   
         candidate_generation = self._stage(
             stages,
             EngineStage.CANDIDATE_GENERATION,
