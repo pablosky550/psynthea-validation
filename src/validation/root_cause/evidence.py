@@ -55,6 +55,9 @@ from validation.knowledge.models import (
     InvestigationCase,
     KnowledgeEntry,
 )
+
+from validation.knowledge.taxonomy import ValidationDomain
+
 from validation.orchestration.models import ArtifactReference, ExperimentResult
 from validation.root_cause.exceptions import (
     EvidenceCollectionError,
@@ -325,6 +328,35 @@ class ArtifactIntegrityVerifier(Protocol):
         """Return whether the artefact matches its declared integrity metadata."""
 
 
+def _canonical_interpretation_domain(domain: str) -> ValidationDomain:
+    """Map Phase 2A rule domains to canonical Root Cause validation domains."""
+
+    normalized = _require_text(
+        domain,
+        "interpretation_finding.domain",
+    ).lower()
+
+    aliases = {
+        "clinical": ValidationDomain.GLOBAL,
+        "epidemiological": ValidationDomain.GLOBAL,
+        "statistical": ValidationDomain.GLOBAL,
+        "prevalence": ValidationDomain.CONDITIONS,
+        "distribution": ValidationDomain.GLOBAL,
+        "structural": ValidationDomain.VALIDATION_PIPELINE,
+        "spanish_adaptation": ValidationDomain.INTEROPERABILITY,
+    }
+
+    try:
+        return aliases[normalized]
+    except KeyError as exc:
+        raise RootCauseInputError(
+            "Interpretation finding contains an unsupported rule domain.",
+            context={
+                "domain": normalized,
+                "supported_domains": tuple(sorted(aliases)),
+            },
+        ) from exc
+
 # =============================================================================
 # Built-in adapters
 # =============================================================================
@@ -470,38 +502,61 @@ class InterpretationFindingAdapter:
     ) -> tuple[EvidenceReference, ...]:
         del context
         if not isinstance(source, InterpretationFinding):
-            raise TypeError("InterpretationFindingAdapter requires InterpretationFinding input.")
-        root = EvidenceReference(
-            id=_evidence_id("interpretation_finding", source.finding_id),
-            source_type=SourceFamily.INTERPRETATION.value,
-            summary=source.title,
-            locator=f"interpretation.findings[{source.finding_id}]",
-            observed_at=source.created_at,
-            details=source.observation,
-            metadata={
-                "source_family": SourceFamily.INTERPRETATION.value,
-                "binding_kind": "interpretation_finding",
-                "binding_id": source.finding_id,
-                "rule_id": source.rule_id,
-                "domain": source.domain,
-                "status": source.status.value,
-                "severity": source.severity.value,
-                "confidence": source.confidence.value,
-                "evidence_strength": source.evidence_strength.value,
-                "interpretation": source.interpretation,
-                "impact": source.impact,
-                "limitations": source.limitations,
-                "tags": source.tags,
-                "confidence_score": source.confidence_score,
-                "clinically_relevant": source.clinically_relevant,
-                "blocks_research_use": source.blocks_research_use,
-            },
+            raise TypeError(
+                "InterpretationFindingAdapter requires "
+                "InterpretationFinding input."
+            )
+        validation_domain = _canonical_interpretation_domain(
+            source.domain,
         )
-        children = tuple(
-            InterpretationEvidenceAdapter().collect(item, context)[0]
-            for item in source.evidence
+
+        return (
+            EvidenceReference(
+                id=_evidence_id(
+                    "interpretation_finding",
+                    source.finding_id
+                ),
+                source_type=SourceFamily.INTERPRETATION.value,
+                summary=source.title,
+                locator=(
+                    f"interpretation.findings[{source.finding_id}]"
+                ),
+                observed_at=source.created_at,
+                details=source.observation,
+                metadata={
+                    "source_family": SourceFamily.INTERPRETATION.value,
+                    "binding_kind": "interpretation_finding",
+                    "binding_id": source.finding_id,
+                    "rule_id": source.rule_id,
+                    "domain": validation_domain.value,
+                    "interpretation_domain": source.domain,
+                    "status": source.status.value,
+                    "severity": source.severity.value,
+                    "confidence": source.confidence.value,
+                    "evidence_strength": source.evidence_strength.value,
+                    "interpretation": source.interpretation,
+                    "impact": source.impact,
+                    "limitations": source.limitations,
+                    "tags": source.tags,
+                    "confidence_score": source.confidence_score,
+                    "clinically_relevant": source.clinically_relevant,
+                    "blocks_research_use": source.blocks_research_use,
+                    "referenced_metric_ids": tuple(
+                        item.metric_id
+                        for item in source.evidence
+                    ),
+                    "evidence_roles": {
+                        item.metric_id: item.role.value
+                        for item in source.evidence
+                    },
+                    "evidence_rationales": {
+                        item.metric_id: item.rationale
+                        for item in source.evidence
+                        if item.rationale is not None
+                    },
+                },
+            ),
         )
-        return (root, *children)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1004,7 +1059,14 @@ class EvidenceCollector:
             except (TypeError, ValueError, KeyError) as exc:
                 if context.strict:
                     raise EvidenceCollectionError(
-                        "An evidence adapter could not normalize its source safely.",
+                        (
+                            "An evidence adapter could not normalize its source safely."
+                            f"adapter={adapter.name!r}, "
+                            f"source_type={type(source).__name__!r}, "
+                            f"source_index={index}, "
+                            f"error_type={type(exc).__name__!r}, "
+                            f"error={str(exc)!r}."
+                        ),
                         context={
                             "adapter": adapter.name,
                             "source_type": type(source).__name__,
@@ -1028,15 +1090,22 @@ class EvidenceCollector:
                 )
             except Exception as exc:  # pragma: no cover - defensive plugin boundary
                 raise EvidenceCollectionError(
-                    "Unexpected failure while collecting evidence through an adapter.",
+                    (
+                        "Unexpected failure while collecting evidence through an adapter: "
+                        f"adapter={adapter.name!r}, "
+                        f"source_type={type(source).__name__!r}, "
+                        f"source_index={index}, "
+                        f"error_type={type(exc).__name__!r}, "
+                        f"error={str(exc)!r}."
+                    ),
                     context={
                         "adapter": adapter.name,
                         "source_type": type(source).__name__,
                         "source_index": index,
                         "error_type": type(exc).__name__,
                         "error": str(exc),
-                    },
-                ) from exc
+                },
+            ) from exc
 
         if source_count == 0:
             diagnostics.append(

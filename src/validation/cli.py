@@ -42,6 +42,16 @@ from validation.config import (
     ValidationRunConfig,
 )
 from validation.loaders import load_psynthea, load_synthea
+from validation.orchestration import (
+    ExecutionStatus,
+    ExperimentConfigurationError,
+    ExperimentRunnerError,
+    OrchestrationError,
+    dump_experiment_config,
+    load_experiment_config,
+    run_experiment,
+)
+from validation.orchestration.orchestrator import OrchestrationExecution
 
 __all__ = [
     "ExitCode",
@@ -53,6 +63,7 @@ __all__ = [
     "build_parser",
     "load_config",
     "run_validation",
+    "run_full_experiment",
     "main",
 ]
 
@@ -172,6 +183,25 @@ def build_parser(
         type=Path,
         required=True,
         help="Path to a UTF-8 JSON ValidationRunConfig document.",
+    )
+    parser.add_argument(
+        "--experiment",
+        action="store_true",
+        help=(
+            "Execute the complete Experiment Orchestrator pipeline instead "
+            "of the legacy validation-only workflow."
+        ),
+    )
+    parser.add_argument(
+        "--run-id",
+        help="Optional explicit run identifier for --experiment mode.",
+    )
+    parser.add_argument(
+        "--module-name",
+        help=(
+            "Root-cause module scope for --experiment mode; required only "
+            "for multi-module experiment configurations."
+        ),
     )
     parser.add_argument(
         "--validate-only",
@@ -311,6 +341,21 @@ def run_validation(
     return final_artifacts
 
 
+def run_full_experiment(
+    config: str | Path,
+    *,
+    run_id: str | None = None,
+    module_name: str | None = None,
+) -> OrchestrationExecution:
+    """Execute the complete production Experiment Orchestrator pipeline."""
+
+    return run_experiment(
+        config,
+        run_id=run_id,
+        module_name=module_name,
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -329,7 +374,58 @@ def main(
         except _ParserExit as error:
             return error.status
 
+        if args.experiment and (args.no_plots or args.no_tables):
+            parser.print_usage(stderr)
+            print(
+                f"{parser.prog}: error: --no-plots and --no-tables are "
+                "available only in legacy validation mode.",
+                file=stderr,
+            )
+            return int(ExitCode.INVALID_ARGUMENTS)
+
+        if (
+            not args.experiment
+            and (args.run_id is not None or args.module_name is not None)
+        ):
+            parser.print_usage(stderr)
+            print(
+                f"{parser.prog}: error: --run-id and --module-name require "
+                "--experiment.",
+                file=stderr,
+            )
+            return int(ExitCode.INVALID_ARGUMENTS)
+
         with _configured_logging(args.log_level, stderr):
+            if args.experiment:
+                config = load_experiment_config(args.config)
+
+                if args.print_config:
+                    print(dump_experiment_config(config), file=stdout)
+
+                if args.validate_only:
+                    print(
+                        "Experiment configuration validation succeeded.",
+                        file=stdout,
+                    )
+                    return int(ExitCode.SUCCESS)
+
+                execution = run_full_experiment(
+                    args.config,
+                    run_id=args.run_id,
+                    module_name=args.module_name,
+                )
+                _print_experiment_summary(execution, stdout)
+
+                if execution.result.status is ExecutionStatus.SUCCEEDED:
+                    return int(ExitCode.SUCCESS)
+
+                message = execution.result.error_message or (
+                    "Experiment completed with status "
+                    f"{execution.result.status.value}."
+                )
+                print(f"Pipeline error: {message}", file=stderr)
+                return int(ExitCode.PIPELINE_ERROR)
+
             config = load_config(args.config)
 
             if args.print_config:
@@ -355,13 +451,21 @@ def main(
     except KeyboardInterrupt:
         print("Validation interrupted by user.", file=stderr)
         return int(ExitCode.INTERRUPTED)
-    except ConfigurationError as error:
+    except (
+        ConfigurationError,
+        ExperimentConfigurationError,
+        ExperimentRunnerError,
+    ) as error:
         print(f"Configuration error: {error}", file=stderr)
         return int(ExitCode.CONFIGURATION_ERROR)
     except InputDataError as error:
         print(f"Input data error: {error}", file=stderr)
         return int(ExitCode.INPUT_DATA_ERROR)
-    except (PipelineExecutionError, ArtifactPersistenceError) as error:
+    except (
+        PipelineExecutionError,
+        ArtifactPersistenceError,
+        OrchestrationError,
+    ) as error:
         print(f"Pipeline error: {error}", file=stderr)
         return int(ExitCode.PIPELINE_ERROR)
     except Exception as error:  # pragma: no cover - final process safety net
@@ -737,6 +841,22 @@ def _print_success_summary(artifacts: ValidationRunArtifacts, stream: TextIO) ->
     )
     print(f"Report: {artifacts.report_path}", file=stream)
     print(f"Manifest: {artifacts.manifest_path}", file=stream)
+
+
+def _print_experiment_summary(
+    execution: OrchestrationExecution,
+    stream: TextIO,
+) -> None:
+    result = execution.result
+    print(
+        "Experiment completed: "
+        f"status={result.status.value}, "
+        f"run_id={result.run_id}",
+        file=stream,
+    )
+    print(f"Workspace: {result.workspace}", file=stream)
+    if execution.manifest is not None:
+        print(f"Manifest: {execution.manifest.path}", file=stream)
 
 
 def _decisions_from_report_manifest(path: Path) -> list[str]:

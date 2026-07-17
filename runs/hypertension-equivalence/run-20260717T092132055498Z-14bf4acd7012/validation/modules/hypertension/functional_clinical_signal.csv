@@ -1,0 +1,5 @@
+module_name,domain,synthea_signal_count,psynthea_signal_count,shared_code_count,synthea_only_code_count,psynthea_only_code_count,expected_signal_detected_synthea,expected_signal_detected_psynthea,expected_terms,blocking_issue
+hypertension,conditions,29,46,1,0,0,,,,False
+hypertension,medications,48,0,0,3,0,,,,False
+hypertension,procedures,0,0,0,0,0,,,,False
+hypertension,observations,3224,0,0,5,0,,,,False

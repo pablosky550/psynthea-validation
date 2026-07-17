@@ -1,0 +1,2 @@
+module_name,validation_status,valid_for_statistical_comparison,skipped,skip_reason,continuous_test_count,categorical_test_count,prevalence_test_count,distribution_test_count,significant_test_count,significant_after_fdr_count,mean_jensen_shannon_divergence
+hypertension,partially_comparable,True,False,,18,2,9,4,21,9,0.0

@@ -90,6 +90,8 @@ class ArtifactKind(str, Enum):
     MANIFEST = "manifest"
     LOG = "log"
     SIMULATOR_OUTPUT = "simulator_output"
+    COHORT_LOAD_RESULT = "cohort_load_result"
+    COHORT_NORMALIZATION_RESULT = "cohort_normalization_result"
     NORMALIZED_DATASET = "normalized_dataset"
     VALIDATION_RESULT = "validation_result"
     KNOWLEDGE_RESULT = "knowledge_result"

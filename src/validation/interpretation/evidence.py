@@ -1038,7 +1038,7 @@ _MODULE_STATISTICAL_ADAPTER = _AttributeFrameAdapter(
             ),
         ),
     },
-    scalar_attributes=("module_name",),
+    scalar_attributes=(),
 )
 
 

@@ -316,3 +316,165 @@ def test_no_tables_and_no_plots_create_zero_optional_artifacts(monkeypatch, tmp_
     assert artifacts.figure_paths == ()
     manifest = json.loads(artifacts.manifest_path.read_text(encoding="utf-8"))
     assert manifest["artefact_counts"] == {"figures": 0, "tables": 0}
+
+
+def test_help_exposes_explicit_experiment_mode() -> None:
+    stdout = StringIO()
+    code = main(["--help"], stdout=stdout, stderr=StringIO())
+    assert code == ExitCode.SUCCESS
+    help_text = stdout.getvalue()
+    assert "--experiment" in help_text
+    assert "--run-id" in help_text
+    assert "--module-name" in help_text
+
+
+def test_experiment_validate_only_does_not_execute(monkeypatch, tmp_path: Path) -> None:
+    config_path = tmp_path / "experiment.json"
+    config_path.write_text("{}", encoding="utf-8")
+    sentinel = object()
+    monkeypatch.setattr(
+        "validation.cli.load_experiment_config",
+        lambda path: sentinel,
+    )
+    monkeypatch.setattr(
+        "validation.cli.run_full_experiment",
+        lambda *args, **kwargs: pytest.fail(
+            "run_full_experiment must not be called"
+        ),
+    )
+
+    stdout = StringIO()
+    code = main(
+        ["--config", str(config_path), "--experiment", "--validate-only"],
+        stdout=stdout,
+        stderr=StringIO(),
+    )
+
+    assert code == ExitCode.SUCCESS
+    assert "Experiment configuration validation succeeded." in stdout.getvalue()
+
+
+def test_experiment_mode_executes_runner_and_prints_summary(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+    from validation.orchestration import ExecutionStatus
+
+    config_path = tmp_path / "experiment.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "validation.cli.load_experiment_config",
+        lambda path: object(),
+    )
+
+    captured = {}
+
+    def fake_run(config, *, run_id=None, module_name=None):
+        captured.update(
+            config=config,
+            run_id=run_id,
+            module_name=module_name,
+        )
+        return SimpleNamespace(
+            result=SimpleNamespace(
+                status=ExecutionStatus.SUCCEEDED,
+                run_id="run-001",
+                workspace=tmp_path / "workspace",
+                error_message=None,
+            ),
+            manifest=SimpleNamespace(path=Path("manifest.json")),
+        )
+
+    monkeypatch.setattr("validation.cli.run_full_experiment", fake_run)
+
+    stdout = StringIO()
+    code = main(
+        [
+            "--config",
+            str(config_path),
+            "--experiment",
+            "--run-id",
+            "run-001",
+            "--module-name",
+            "Hypertension",
+        ],
+        stdout=stdout,
+        stderr=StringIO(),
+    )
+
+    assert code == ExitCode.SUCCESS
+    assert captured == {
+        "config": config_path,
+        "run_id": "run-001",
+        "module_name": "Hypertension",
+    }
+    assert "status=succeeded" in stdout.getvalue()
+    assert "run_id=run-001" in stdout.getvalue()
+    assert "Manifest: manifest.json" in stdout.getvalue()
+
+
+def test_experiment_failed_result_maps_to_pipeline_exit_code(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+    from validation.orchestration import ExecutionStatus
+
+    config_path = tmp_path / "experiment.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "validation.cli.load_experiment_config",
+        lambda path: object(),
+    )
+    monkeypatch.setattr(
+        "validation.cli.run_full_experiment",
+        lambda *args, **kwargs: SimpleNamespace(
+            result=SimpleNamespace(
+                status=ExecutionStatus.FAILED,
+                run_id="run-failed",
+                workspace=tmp_path / "workspace",
+                error_message="root cause stage failed",
+            ),
+            manifest=None,
+        ),
+    )
+
+    stderr = StringIO()
+    code = main(
+        ["--config", str(config_path), "--experiment"],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert code == ExitCode.PIPELINE_ERROR
+    assert "root cause stage failed" in stderr.getvalue()
+
+
+def test_experiment_only_options_are_rejected_in_legacy_mode(tmp_path: Path) -> None:
+    stderr = StringIO()
+    code = main(
+        ["--config", str(tmp_path / "config.json"), "--run-id", "run-1"],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+    assert code == ExitCode.INVALID_ARGUMENTS
+    assert "require --experiment" in stderr.getvalue()
+
+
+def test_legacy_only_output_flags_are_rejected_in_experiment_mode(
+    tmp_path: Path,
+) -> None:
+    stderr = StringIO()
+    code = main(
+        [
+            "--config",
+            str(tmp_path / "experiment.json"),
+            "--experiment",
+            "--no-plots",
+        ],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+    assert code == ExitCode.INVALID_ARGUMENTS
+    assert "legacy validation mode" in stderr.getvalue()

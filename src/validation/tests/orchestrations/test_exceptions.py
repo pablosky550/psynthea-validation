@@ -243,6 +243,8 @@ def test_public_export_list_contains_every_public_exception():
     assert set(module.__all__) == {
         "ErrorCategory",
         "ErrorCode",
+        "ExperimentConfigurationError",
+        "ExperimentConfigurationIOError",
         "ManifestCollisionError",
         "ManifestError",
         "ManifestIntegrityError",

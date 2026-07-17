@@ -23,6 +23,8 @@ from typing import Any, ClassVar
 __all__ = [
     "ErrorCategory",
     "ErrorCode",
+    "ExperimentConfigurationError",
+    "ExperimentConfigurationIOError",
     "ManifestCollisionError",
     "ManifestError",
     "ManifestIntegrityError",
@@ -59,6 +61,9 @@ class ErrorCode(str, Enum):
     """Stable error identifiers suitable for logs, reports and CLI output."""
 
     PHASE_2B_ERROR = "phase_2b.error"
+
+    EXPERIMENT_CONFIGURATION = "phase_2b.configuration.error"
+    EXPERIMENT_CONFIGURATION_IO = "phase_2b.configuration.io"
 
     WORKSPACE_ERROR = "phase_2b.workspace.error"
     WORKSPACE_COLLISION = "phase_2b.workspace.collision"
@@ -239,6 +244,26 @@ class Phase2BError(RuntimeError):
             _rebuild_exception,
             (type(self), str(self), _thaw(self.context)),
         )
+
+
+# =============================================================================
+# Experiment configuration boundary
+# =============================================================================
+
+
+class ExperimentConfigurationError(Phase2BError):
+    """Raised when an experiment specification is malformed or unsupported."""
+
+    code = ErrorCode.EXPERIMENT_CONFIGURATION
+    category = ErrorCategory.CONFIGURATION
+    component = "experiment_configuration"
+
+
+class ExperimentConfigurationIOError(ExperimentConfigurationError):
+    """Raised when an experiment configuration cannot be read safely."""
+
+    code = ErrorCode.EXPERIMENT_CONFIGURATION_IO
+    category = ErrorCategory.PATH
 
 
 # =============================================================================

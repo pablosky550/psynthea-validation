@@ -58,6 +58,21 @@ Exceptions
     OrchestrationFinalizationError
 """
 
+
+from .configuration import (
+    ExperimentConfigurationError,
+    dump_experiment_config,
+    experiment_config_to_dict,
+    load_experiment_config,
+    parse_experiment_config,
+)
+
+
+from .execution import (
+    ExperimentRunnerError,
+    run_experiment,
+)
+
 from .exceptions import (
     ManifestCollisionError,
     ManifestError,
@@ -78,6 +93,14 @@ from .exceptions import (
 )
 
 from .manifest import ExperimentManifest
+
+from .composition import (
+    build_experiment_orchestrator,
+)
+
+from .production import (
+    build_production_orchestrator,
+)
 
 from .models import (
     ArtifactKind,
@@ -127,6 +150,17 @@ __all__ = [
     "PipelineStageResult",
     "ArtifactReference",
 
+    # Configuration codec
+    "ExperimentConfigurationError",
+    "load_experiment_config",
+    "parse_experiment_config",
+    "experiment_config_to_dict",
+    "dump_experiment_config",
+
+    # Public execution runner
+    "ExperimentRunnerError",
+    "run_experiment",
+
     # Workspace
     "ExperimentWorkspace",
 
@@ -135,6 +169,8 @@ __all__ = [
 
     # Orchestrator
     "ExperimentOrchestrator",
+    "build_experiment_orchestrator",
+    "build_production_orchestrator",
     "OrchestrationContext",
     "OrchestrationExecution",
     "OrchestrationPolicy",

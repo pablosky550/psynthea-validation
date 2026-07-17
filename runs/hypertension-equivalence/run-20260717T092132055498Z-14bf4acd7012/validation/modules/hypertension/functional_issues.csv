@@ -1,0 +1,3 @@
+module_name,severity,domain,issue,details
+hypertension,warning,medications,psynthea_table_empty,Synthea produced rows but psynthea did not.
+hypertension,warning,observations,psynthea_table_empty,Synthea produced rows but psynthea did not.

@@ -1,0 +1,7 @@
+module_name,table,synthea_available,psynthea_available,synthea_rows,psynthea_rows,synthea_empty,psynthea_empty,row_difference,relative_row_difference,required,blocking_issue
+hypertension,patients,True,True,100,100,False,False,0,0.0,True,False
+hypertension,encounters,True,True,941,46,False,False,-895,-0.9511158342189161,True,False
+hypertension,conditions,True,True,29,46,False,False,17,0.5862068965517241,True,False
+hypertension,medications,True,True,48,0,False,True,-48,-1.0,False,False
+hypertension,procedures,True,True,0,0,True,True,0,,False,False
+hypertension,observations,True,True,3224,0,False,True,-3224,-1.0,False,False
