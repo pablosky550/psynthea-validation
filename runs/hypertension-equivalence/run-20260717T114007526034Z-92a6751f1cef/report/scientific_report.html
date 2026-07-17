@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hypertension equivalence: Synthea vs psynthea</title>
+<style>
+:root{--ink:#152238;--muted:#64748b;--line:#dbe3ec;--paper:#fff;--canvas:#f3f6f9;--navy:#15385f;--blue:#2368a2;--green:#18724a;--amber:#9a5a00;--red:#a32634;--soft-red:#fff1f3;--soft-amber:#fff7e8;--soft-green:#edf8f2;--soft-blue:#edf5fc;--soft-gray:#f7f9fb}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--canvas);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55}main{max-width:1180px;margin:auto;padding:28px 22px 72px}header,.section{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:28px;margin-bottom:20px;box-shadow:0 2px 8px rgba(20,40,70,.035)}h1{font-size:2rem;margin:0 0 6px}h2{font-size:1.35rem;color:var(--navy);margin:0 0 18px}h3{font-size:1.05rem;margin:18px 0 9px}p{margin:8px 0}a{color:var(--blue)}.eyebrow{font-size:.78rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--blue)}.muted{color:var(--muted)}.decision-row{display:grid;grid-template-columns:minmax(220px,.72fr) 2fr;gap:20px;align-items:stretch;margin-top:22px}.decision-box{border-radius:12px;padding:24px;background:var(--soft-amber);border:1px solid #efd09b}.decision-label{font-size:.77rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.decision-value{font-size:2.2rem;font-weight:900;margin-top:4px;color:var(--amber)}.conclusion{border-left:5px solid var(--amber);padding:18px 20px;background:#fafbfd;border-radius:8px;font-size:1.03rem}.meta,.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}.meta{margin-top:20px}.card{border:1px solid var(--line);border-radius:10px;padding:15px;background:#fbfcfe}.label{display:block;color:var(--muted);font-size:.73rem;font-weight:750;text-transform:uppercase;letter-spacing:.045em}.value{display:block;font-size:1.17rem;font-weight:800;margin-top:3px;overflow-wrap:anywhere}nav{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}nav a{display:inline-block;margin:4px 14px 4px 0;text-decoration:none;font-weight:650;font-size:.9rem}table{width:100%;border-collapse:collapse;font-size:.91rem}th,td{padding:11px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{background:#f5f8fb;color:var(--navy);font-size:.78rem;text-transform:uppercase;letter-spacing:.035em}tr:last-child td{border-bottom:0}.badge{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.72rem;font-weight:850;text-transform:uppercase;letter-spacing:.035em}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{background:var(--soft-green);color:var(--green)}.badge-review,.badge-warning,.badge-plausible,.badge-high{background:var(--soft-amber);color:var(--amber)}.badge-fail,.badge-failed,.badge-blocking,.badge-critical,.badge-urgent,.badge-not-demonstrated{background:var(--soft-red);color:var(--red)}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-out-of-scope{background:#eef1f5;color:#566273}.discrepancy{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}.discrepancy h3{margin:4px 0 8px}.discrepancy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}.mini{background:var(--soft-gray);padding:11px 13px;border-radius:8px}.strength{font-weight:800}.bar{height:7px;background:#e7edf3;border-radius:99px;overflow:hidden;margin-top:7px}.bar span{display:block;height:100%;background:var(--navy)}.delta-negative{color:var(--red);font-weight:800}.delta-positive{color:var(--red);font-weight:800}.delta-neutral{color:var(--green);font-weight:800}.recommendation{display:grid;grid-template-columns:42px 1fr;gap:14px;border-bottom:1px solid var(--line);padding:15px 0}.recommendation:last-child{border:0}.rank{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font-weight:850}.callout{background:var(--soft-blue);border-left:4px solid var(--blue);padding:14px 17px;border-radius:7px}.scope-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.scope-box{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}details{border:1px solid var(--line);border-radius:9px;padding:12px 15px;margin:10px 0;background:#fff}summary{cursor:pointer;font-weight:750;color:var(--navy)}pre{white-space:pre-wrap;word-break:break-word;background:#111b2a;color:#e9eef6;padding:16px;border-radius:8px;max-height:560px;overflow:auto;font-size:.79rem}ul{padding-left:21px}.empty{color:var(--muted);font-style:italic}.footer{text-align:center;color:var(--muted);font-size:.82rem;margin-top:20px}@media(max-width:760px){.decision-row,.scope-grid{grid-template-columns:1fr}header,.section{padding:20px}}@media print{body{background:#fff}main{max-width:none;padding:0}header,.section{box-shadow:none;break-inside:avoid}nav{display:none}details{break-inside:avoid}}
+</style>
+</head>
+<body><main>
+<header id="top">
+<div class="eyebrow">Psynthea scientific validation</div>
+<h1>Hypertension equivalence: Synthea vs psynthea</h1>
+<p class="muted">Research-facing scientific validation report · schema 1.3.2</p>
+<div class="decision-row">
+<div class="decision-box"><span class="decision-label">Overall scientific decision</span><div class="decision-value">REVIEW</div><div class="muted"><strong>Not research ready</strong></div></div>
+<div class="conclusion"><strong>Scientific conclusion.</strong><br>Scientific equivalence between Psynthea and Synthea was not demonstrated: observation generation absent, medication generation absent, encounter generation differs materially, hypertension prevalence differs. The evaluated module is not suitable for downstream research until these discrepancies are resolved and the experiment is repeated.</div>
+</div>
+<div class="meta">
+<div class="card"><span class="label">Experiment</span><span class="value">hypertension-equivalence</span></div>
+<div class="card"><span class="label">Run</span><span class="value">run-20260717T114007526034Z-92a6751f1cef</span></div>
+<div class="card"><span class="label">Population</span><span class="value">100</span></div>
+<div class="card"><span class="label">Seed</span><span class="value">42</span></div>
+<div class="card"><span class="label">Modules</span><span class="value">hypertension</span></div>
+<div class="card"><span class="label">Generated</span><span class="value">2026-07-17T11:40:13.357219+00:00</span></div>
+</div>
+<nav><a href="#overview">Assessment</a><a href="#comparison">Cohorts</a><a href="#findings">Major discrepancies</a><a href="#statistics">Statistics</a><a href="#scope">Scope</a><a href="#root-cause">Root cause</a><a href="#recommendations">Recommendations</a><a href="#limitations">Limitations</a><a href="#appendix">Appendix</a></nav>
+</header>
+<section class="section" id="overview"><h2>1. Scientific assessment</h2><div class="cards">
+<div class="card"><span class="label">Comparison performed</span><span class="value">1 / 1</span></div>
+<div class="card"><span class="label">Overall equivalence</span><span class="value">Not demonstrated</span></div>
+<div class="card"><span class="label">Major discrepancies</span><span class="value">4</span></div>
+<div class="card"><span class="label">Significant after FDR</span><span class="value">9</span></div>
+<div class="card"><span class="label">Research-ready modules</span><span class="value">0 / 1</span></div>
+<div class="card"><span class="label">Root-cause status</span><span class="value">inconclusive</span></div>
+</div>
+<div class="callout"><strong>Interpretation:</strong> “Comparison performed” means that the available cohorts supported statistical analysis. It does not mean that equivalence was demonstrated. Research readiness additionally requires clinically coherent outputs and no blocking scientific findings.</div></section>
+<section class="section" id="comparison"><h2>2. Cohort comparison</h2><table><thead><tr><th>Clinical output</th><th>Synthea</th><th>Psynthea</th><th>Relative difference</th><th>Screening</th></tr></thead><tbody><tr><td>Patients</td><td>100</td><td>100</td><td class="delta-neutral">+0.0 %</td><td><span class="badge badge-performed">performed</span></td></tr><tr><td>Conditions</td><td>29</td><td>46</td><td class="delta-positive">+58.6 %</td><td><span class="badge badge-review">review</span></td></tr><tr><td>Encounters</td><td>941</td><td>46</td><td class="delta-negative">-95.1 %</td><td><span class="badge badge-review">review</span></td></tr><tr><td>Medications</td><td>48</td><td>0</td><td class="delta-negative">-100.0 %</td><td><span class="badge badge-review">review</span></td></tr><tr><td>Observations</td><td>3,224</td><td>0</td><td class="delta-negative">-100.0 %</td><td><span class="badge badge-review">review</span></td></tr><tr><td>Procedures</td><td>0</td><td>0</td><td class="delta-neutral">N/A</td><td><span class="badge badge-not-informative">not informative</span></td></tr></tbody></table><p class="muted">Relative differences describe output volume and are not used as a standalone equivalence criterion. “N/A” is reported when both reference and candidate counts are zero. When both cohorts contain zero events, the endpoint is marked “not informative” because no comparative conclusion can be drawn.</p></section>
+<section class="section" id="findings"><h2>3. Major scientific discrepancies</h2><article class="discrepancy"><div><span class="badge badge-critical">critical</span> <span class="badge badge-blocking">blocking</span></div><h3>Observation generation absent</h3><p>No clinical observations were produced by Psynthea.</p><div class="discrepancy-grid"><div class="mini"><span class="label">Cohort evidence</span>Synthea: <strong>3,224</strong><br>Psynthea: <strong>0</strong><br>Difference: <strong>-100.0 %</strong></div><div class="mini"><span class="label">Scientific evidence</span>Synthea generated 3,224 observation records, whereas Psynthea generated none. Both output tables were present, but the Psynthea observation table was empty.</div><div class="mini"><span class="label">Evidence strength</span><span class="strength">Moderate</span><div class="bar"><span style="width:66%"></span></div><span class="muted">2 distinct evidence dimensions; 3 supporting engine finding(s)</span></div><div class="mini"><span class="label">Supporting evidence</span><ul><li>Kolmogorov–Smirnov</li><li>Mann–Whitney U</li><li>Welch t-test</li><li>Functional event-retention evidence</li></ul></div></div></article><article class="discrepancy"><div><span class="badge badge-critical">critical</span> <span class="badge badge-blocking">blocking</span></div><h3>Medication generation absent</h3><p>No medication records were produced by Psynthea.</p><div class="discrepancy-grid"><div class="mini"><span class="label">Cohort evidence</span>Synthea: <strong>48</strong><br>Psynthea: <strong>0</strong><br>Difference: <strong>-100.0 %</strong></div><div class="mini"><span class="label">Scientific evidence</span>Synthea generated 48 medication records, whereas Psynthea generated none. Both output tables were present, but the Psynthea medication table was empty.</div><div class="mini"><span class="label">Evidence strength</span><span class="strength">Moderate</span><div class="bar"><span style="width:66%"></span></div><span class="muted">2 distinct evidence dimensions; 3 supporting engine finding(s)</span></div><div class="mini"><span class="label">Supporting evidence</span><ul><li>Kolmogorov–Smirnov</li><li>Mann–Whitney U</li><li>Welch t-test</li><li>Functional event-retention evidence</li></ul></div></div></article><article class="discrepancy"><div><span class="badge badge-high">high</span> <span class="badge badge-blocking">blocking</span></div><h3>Encounter generation differs materially</h3><p>Psynthea generated substantially fewer encounters than Synthea.</p><div class="discrepancy-grid"><div class="mini"><span class="label">Cohort evidence</span>Synthea: <strong>941</strong><br>Psynthea: <strong>46</strong><br>Difference: <strong>-95.1 %</strong></div><div class="mini"><span class="label">Scientific evidence</span>Synthea generated 941 encounters and Psynthea 46 (-95.1 %). Standardized effect size: 1.00, classified as large. p-value: 2.21e-59. Cohort size: 100 Synthea and 100 Psynthea patients.</div><div class="mini"><span class="label">Evidence strength</span><span class="strength">Moderate</span><div class="bar"><span style="width:66%"></span></div><span class="muted">2 distinct evidence dimensions; 3 supporting engine finding(s)</span></div><div class="mini"><span class="label">Supporting evidence</span><ul><li>Kolmogorov–Smirnov</li><li>Mann–Whitney U</li><li>Welch t-test</li><li>Cohort-volume evidence</li></ul></div></div></article><article class="discrepancy"><div><span class="badge badge-high">high</span> <span class="badge badge-blocking">blocking</span></div><h3>Hypertension prevalence differs</h3><p>The principal hypertension prevalence differs materially between engines.</p><div class="discrepancy-grid"><div class="mini"><span class="label">Cohort evidence</span>Synthea: <strong>29</strong><br>Psynthea: <strong>46</strong><br>Difference: <strong>+58.6 %</strong></div><div class="mini"><span class="label">Scientific evidence</span>Synthea prevalence: 29.0 %; Psynthea prevalence: 46.0 %; absolute difference: +17.0 percentage points; relative difference: +58.6 %; risk ratio: 1.59; 95 % CI: 1.09–2.30; FDR-adjusted p-value: 0.013.</div><div class="mini"><span class="label">Evidence strength</span><span class="strength">Strong</span><div class="bar"><span style="width:100%"></span></div><span class="muted">3 distinct evidence dimensions; 9 supporting engine finding(s)</span></div><div class="mini"><span class="label">Supporting evidence</span><ul><li>Prevalence comparison</li><li>Risk ratio</li><li>FDR-adjusted inference</li><li>95 % confidence interval</li></ul></div></div></article><div class="callout"><strong>Evidence-count caution:</strong> Supporting engine findings can share underlying evidence and must not be interpreted as independent replications.</div><p class="muted"><strong>Severity definitions:</strong> Critical indicates complete absence of output in a clinically relevant domain where Synthea produced events. High indicates generated output with a material and statistically supported discordance.</p></section>
+<section class="section" id="statistics"><h2>4. Statistical evidence</h2><div class="cards"><div class="card"><span class="label">Modules tested</span><span class="value">1</span></div><div class="card"><span class="label">Nominally significant tests</span><span class="value">21</span></div><div class="card"><span class="label">Significant after FDR</span><span class="value">9</span></div><div class="card"><span class="label">Warnings</span><span class="value">2</span></div></div><h3>Module-level interpretation</h3><table><thead><tr><th>Module</th><th>Validation status</th><th>Nominally significant</th><th>After FDR</th><th>Comparison</th><th>Equivalence</th></tr></thead><tbody><tr><td>hypertension</td><td><span class="badge badge-partially-comparable">partially_comparable</span></td><td>21</td><td>9</td><td><span class="badge badge-performed">performed</span></td><td><span class="badge badge-not-demonstrated">not demonstrated</span></td></tr></tbody></table><h3>Key endpoint estimates</h3><table><thead><tr><th>Endpoint</th><th>Synthea</th><th>Psynthea</th><th>Relative difference</th><th>Effect estimate and uncertainty</th></tr></thead><tbody><tr><td>Observation generation absent</td><td>3,224</td><td>0</td><td>-100.0 %</td><td>Synthea generated 3,224 observation records, whereas Psynthea generated none. Both output tables were present, but the Psynthea observation table was empty.</td></tr><tr><td>Medication generation absent</td><td>48</td><td>0</td><td>-100.0 %</td><td>Synthea generated 48 medication records, whereas Psynthea generated none. Both output tables were present, but the Psynthea medication table was empty.</td></tr><tr><td>Encounter generation differs materially</td><td>941</td><td>46</td><td>-95.1 %</td><td>Synthea generated 941 encounters and Psynthea 46 (-95.1 %). Standardized effect size: 1.00, classified as large. p-value: 2.21e-59. Cohort size: 100 Synthea and 100 Psynthea patients.</td></tr><tr><td>Hypertension prevalence differs</td><td>29</td><td>46</td><td>+58.6 %</td><td>Synthea prevalence: 29.0 %; Psynthea prevalence: 46.0 %; absolute difference: +17.0 percentage points; relative difference: +58.6 %; risk ratio: 1.59; 95 % CI: 1.09–2.30; FDR-adjusted p-value: 0.013.</td></tr></tbody></table><p class="muted">A 95 % confidence interval is shown only when it is present in the persisted upstream evidence. No interval is inferred or recalculated by the reporting stage.</p><p class="muted">Multiple tests supporting the same clinical discrepancy are consolidated in Section 3. P-values, effect estimates and confidence intervals are reproduced from the Validation and Knowledge engines; the report performs no statistical recalculation.</p></section>
+<section class="section" id="scope"><h2>5. Validation scope</h2><div class="scope-grid"><div class="scope-box"><span class="label">Evaluated in this experiment</span><h3>Synthea–Psynthea equivalence</h3><ul><li>Functional output generation</li><li>Clinical event volumes</li><li>Prevalence and distributional endpoints</li><li>Multiplicity-adjusted statistical evidence</li></ul></div><div class="scope-box"><span class="label">Not evaluated in this experiment</span><h3>Spanish healthcare adaptation</h3><ul><li>SPANISH.CLINICAL_CONTEXT</li><li>SPANISH.EVIDENCE_INTEGRITY</li><li>SPANISH.HEALTHCARE_FLOW</li><li>SPANISH.PRIMARY_CARE</li><li>SPANISH.REFERRALS</li></ul><p>Spanish-healthcare rules were present but were not evaluated with an explicit Spanish clinical reference.</p><p class="muted">These dimensions require an independent experiment with an explicit Spanish clinical reference. They must not be interpreted as failed Synthea–Psynthea equivalence results.</p></div></div><details><summary>Other incomplete or non-applicable validation dimensions</summary><ul><li>EPI.DEMOGRAPHIC_PROFILE</li><li>EPI.PREVALENCE_PROFILE</li><li>EPI.PREVALENCE_PROFILE.INCONCLUSIVE</li><li>EPI.PREVALENCE_PROFILE.RECALIBRATE</li><li>EPI.RELATIONSHIP_PRESERVATION</li></ul></details></section>
+<section class="section" id="root-cause"><h2>6. Root-cause assessment</h2><div class="cards"><div class="card"><span class="label">Status</span><span class="value">inconclusive</span></div><div class="card"><span class="label">Confidence</span><span class="value">none</span></div><div class="card"><span class="label">Signals assessed</span><span class="value">20</span></div><div class="card"><span class="label">Candidate causes</span><span class="value">20</span></div><div class="card"><span class="label">Completed verifications</span><span class="value">0</span></div><div class="card"><span class="label">Confirmed causes</span><span class="value">0</span></div></div><h3>Leading investigation hypothesis</h3><p>Differences in probabilistic transition semantics may contribute to at least one observed discrepancy.</p><div class="discrepancy-grid"><div class="mini"><span class="label">Evidence status</span>Indirect only. No deterministic verification has established causality.</div><div class="mini"><span class="label">Affected discrepancies</span>Observation generation absent, Medication generation absent, Encounter generation differs materially, Hypertension prevalence differs</div><div class="mini"><span class="label">Scientific interpretation</span>The current root-cause result is hypothesis-generating, not confirmatory.</div></div><div class="callout"><strong>Causal caution:</strong> A plausible candidate prioritises investigation. It must not be reported as the confirmed explanation while the engine status remains inconclusive or verification is incomplete.</div></section>
+<section class="section" id="recommendations"><h2>7. Prioritised recommendations</h2><div class="recommendation"><div class="rank">1</div><div><div><span class="badge badge-urgent">urgent</span> <span class="badge badge-blocking">blocking</span></div><h3>Restore Observation generation</h3><p>Ensure clinically intended observation states emit valid records, then repeat the same seeded comparison.</p><p><strong>Verification:</strong> Re-run identical cohorts first, then repeat across independent seeds and confirm that the relevant endpoint falls within the approved tolerance.</p></div></div><div class="recommendation"><div class="rank">2</div><div><div><span class="badge badge-urgent">urgent</span> <span class="badge badge-blocking">blocking</span></div><h3>Restore Medication generation</h3><p>Ensure medication-order states emit medication records and validate event retention against Synthea.</p><p><strong>Verification:</strong> Re-run identical cohorts first, then repeat across independent seeds and confirm that the relevant endpoint falls within the approved tolerance.</p></div></div><div class="recommendation"><div class="rank">3</div><div><div><span class="badge badge-high">high</span> <span class="badge badge-blocking">blocking</span></div><h3>Review encounter workflow</h3><p>Inspect encounter creation, closure and transition logic responsible for the approximately 95% volume deficit.</p><p><strong>Verification:</strong> Re-run identical cohorts first, then repeat across independent seeds and confirm that the relevant endpoint falls within the approved tolerance.</p></div></div><div class="recommendation"><div class="rank">4</div><div><div><span class="badge badge-high">high</span> <span class="badge badge-blocking">blocking</span></div><h3>Review hypertension probabilities</h3><p>Audit incidence, prevalence and transition probabilities, then repeat prevalence validation across independent seeds.</p><p><strong>Verification:</strong> Re-run identical cohorts first, then repeat across independent seeds and confirm that the relevant endpoint falls within the approved tolerance.</p></div></div><details><summary>Additional engine recommendations</summary><ul><li>Investigate abnormal generation volume for &#x27;medications&#x27; events in psynthea.</li><li>Investigate abnormal generation volume for &#x27;observations&#x27; events in psynthea.</li><li>Recalibrate the affected disease modules and rerun prevalence validation.</li><li>Regenerate and validate the affected clinical-comparison evidence.</li><li>Complete or resolve validation rule EPI.RELATIONSHIP_PRESERVATION.</li><li>Inspect the endpoint definition, cohort construction and random-seed sensitivity.</li><li>Recompute the statistical endpoint with complete finite inputs and adequate sample size.</li><li>Review disease-module incidence logic, cohort denominators and code mapping for this endpoint.</li><li>Inspect the originating pipeline source and regenerate the affected evidence.</li><li>Investigate abnormal generation volume for &#x27;conditions&#x27; events in psynthea.</li></ul></details></section>
+<section class="section" id="limitations"><h2>8. Limitations and outstanding questions</h2><h3>Primary limitations</h3><ul><li>The current experiment uses one cohort size and one random seed; reproducibility across independent seeds has not yet been demonstrated.</li><li>Missing Observation and Medication outputs prevent complete clinical equivalence assessment for the hypertension module.</li><li>The Root Cause Engine result is inconclusive and no deterministic verification has confirmed a causal mechanism.</li><li>Spanish healthcare adaptation was outside the evaluated scope and requires a separate reference-driven experiment.</li></ul><h3>Outstanding scientific questions</h3><ul><li>Why are Observation states producing no records?</li><li>Why are MedicationOrder or treatment states not emitting medication records?</li><li>Which workflow or transition logic reduces encounter generation relative to Synthea?</li><li>Which probability, transition or denominator difference produces excess hypertension prevalence?</li></ul><details><summary>Technical unresolved signals</summary><ul><li>What additional deterministic evidence can resolve signal signal:1f81c70580a520727657b886?</li><li>What additional deterministic evidence can resolve signal signal:26323a537b07e4fbe4096d6d?</li><li>What additional deterministic evidence can resolve signal signal:2712a7c0d28fd141e0b62cb4?</li><li>What additional deterministic evidence can resolve signal signal:39a9ba6ed7bacc84e30c5a0a?</li><li>What additional deterministic evidence can resolve signal signal:3e1480914b9d36f9333bf0eb?</li><li>What additional deterministic evidence can resolve signal signal:4d9e81767bfeaa684183a4a3?</li><li>What additional deterministic evidence can resolve signal signal:509f80553c919185e43990f5?</li><li>What additional deterministic evidence can resolve signal signal:582d9af0a4a2ed3686dcbe6f?</li><li>What additional deterministic evidence can resolve signal signal:62c16ffc8728889b5f10dd7a?</li><li>What additional deterministic evidence can resolve signal signal:6967fce1fb75412a2bba6fa5?</li><li>What additional deterministic evidence can resolve signal signal:8ce3cb390148995d2a131533?</li><li>What additional deterministic evidence can resolve signal signal:9160163674ec317d5ba10185?</li><li>What additional deterministic evidence can resolve signal signal:91ab5ae66d3cfa66095a83c9?</li><li>What additional deterministic evidence can resolve signal signal:96bc2979f69f9c20c60cb976?</li><li>What additional deterministic evidence can resolve signal signal:975945a2a08b6204be66583e?</li><li>What additional deterministic evidence can resolve signal signal:a104766a0f9812eb2e5ff5a6?</li><li>What additional deterministic evidence can resolve signal signal:d83f9fde140a2fda4c7c171e?</li><li>What additional deterministic evidence can resolve signal signal:e0c2df1f70f006bf38e411e8?</li><li>What additional deterministic evidence can resolve signal signal:e8f9d1e82c383edcb75a1d6d?</li><li>What additional deterministic evidence can resolve signal signal:fe22eddf4f4bc09bd02f1652?</li></ul></details></section>
+<section class="section" id="appendix"><h2>9. Technical appendix</h2><h3>Pipeline execution</h3><table><thead><tr><th>Stage</th><th>Status</th><th>Summary</th><th>Error</th></tr></thead><tbody><tr><td>workspace_initialization</td><td><span class="badge badge-succeeded">succeeded</span></td><td>Experiment workspace created and ownership verified.</td><td>—</td></tr><tr><td>cohort_loading</td><td><span class="badge badge-succeeded">succeeded</span></td><td>Loaded and verified Synthea and psynthea cohorts from 10 canonical CSV artefacts.</td><td>—</td></tr><tr><td>cohort_normalization</td><td><span class="badge badge-succeeded">succeeded</span></td><td>Normalized Synthea and psynthea cohorts into 12 deterministic canonical datasets.</td><td>—</td></tr><tr><td>validation</td><td><span class="badge badge-succeeded">succeeded</span></td><td>Executed functional and statistical validation for 1 module(s); 1 were statistically comparable.</td><td>—</td></tr><tr><td>knowledge_enrichment</td><td><span class="badge badge-succeeded">succeeded</span></td><td>Executed scientific interpretation for 1 module(s); 0 are ready for research use and 32 blocking finding(s) were identified.</td><td>—</td></tr><tr><td>root_cause_analysis</td><td><span class="badge badge-succeeded">succeeded</span></td><td>Root-cause analysis completed with 20 finding(s), 20 candidate(s) and status &#x27;inconclusive&#x27;.</td><td>—</td></tr></tbody></table><details><summary>Source artifact manifest</summary><pre>{
+  &quot;knowledge_result&quot;: {
+    &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:knowledge-result&quot;,
+    &quot;path&quot;: &quot;knowledge/knowledge_result.json&quot;,
+    &quot;producer&quot;: &quot;knowledge_stage&quot;,
+    &quot;sha256&quot;: &quot;d81b82f457c66757a82d6b533f4ff19cfd5cfdcd7bb61328cea7fbc7db310257&quot;,
+    &quot;size_bytes&quot;: 726961
+  },
+  &quot;root_cause_result&quot;: {
+    &quot;artifact_id&quot;: &quot;hypertension-equivalence.run-20260717T114007526034Z-92a6751f1cef.root-cause.result&quot;,
+    &quot;path&quot;: &quot;root_cause/root_cause_result.json&quot;,
+    &quot;producer&quot;: &quot;root_cause_engine&quot;,
+    &quot;sha256&quot;: &quot;efcf50ea45a2c9a162bb3668d47da31acb796015ae83bd90120d4ff0b523f178&quot;,
+    &quot;size_bytes&quot;: 445162
+  },
+  &quot;validation_result&quot;: {
+    &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation-result&quot;,
+    &quot;path&quot;: &quot;validation/validation_result.json&quot;,
+    &quot;producer&quot;: &quot;validation_stage&quot;,
+    &quot;sha256&quot;: &quot;71c93d782a002a3f02be477c0af3ef4ecc572f60e8a1ac71a8f1167603e0d6d8&quot;,
+    &quot;size_bytes&quot;: 7453
+  }
+}</pre></details><details><summary>Validation Engine summary</summary><pre>{
+  &quot;aggregate&quot;: {
+    &quot;blocking_issue_count&quot;: 0,
+    &quot;comparable_module_count&quot;: 1,
+    &quot;module_count&quot;: 1,
+    &quot;significant_after_fdr_count&quot;: 9,
+    &quot;significant_test_count&quot;: 21,
+    &quot;skipped_module_count&quot;: 0,
+    &quot;warning_count&quot;: 2
+  },
+  &quot;cohorts&quot;: {
+    &quot;psynthea&quot;: {
+      &quot;conditions&quot;: 46,
+      &quot;encounters&quot;: 46,
+      &quot;medications&quot;: 0,
+      &quot;observations&quot;: 0,
+      &quot;patients&quot;: 100,
+      &quot;procedures&quot;: 0,
+      &quot;source&quot;: &quot;psynthea&quot;
+    },
+    &quot;synthea&quot;: {
+      &quot;conditions&quot;: 29,
+      &quot;encounters&quot;: 941,
+      &quot;medications&quot;: 48,
+      &quot;observations&quot;: 3224,
+      &quot;patients&quot;: 100,
+      &quot;procedures&quot;: 0,
+      &quot;source&quot;: &quot;synthea-java&quot;
+    }
+  },
+  &quot;configuration&quot;: {
+    &quot;alpha&quot;: 0.05,
+    &quot;modules&quot;: [
+      &quot;hypertension&quot;
+    ],
+    &quot;top_n_codes&quot;: 25
+  },
+  &quot;generated_at&quot;: &quot;2026-07-17T11:40:12.962099+00:00&quot;,
+  &quot;modules&quot;: [
+    {
+      &quot;functional_summary&quot;: {
+        &quot;blocking_issue_count&quot;: 0,
+        &quot;mean_distributional_similarity&quot;: 1.0,
+        &quot;mean_jensen_shannon_divergence&quot;: 0.0,
+        &quot;module_name&quot;: &quot;hypertension&quot;,
+        &quot;psynthea_condition_count&quot;: 46,
+        &quot;psynthea_functional&quot;: true,
+        &quot;psynthea_observation_count&quot;: 0,
+        &quot;status&quot;: &quot;partially_comparable&quot;,
+        &quot;status_reason&quot;: &quot;The module produced comparable core signal, but optional domains or warnings require restricted interpretation.&quot;,
+        &quot;synthea_condition_count&quot;: 29,
+        &quot;synthea_functional&quot;: true,
+        &quot;synthea_observation_count&quot;: 3224,
+        &quot;valid_for_comparison&quot;: true,
+        &quot;warning_count&quot;: 2
+      },
+      &quot;module_name&quot;: &quot;hypertension&quot;,
+      &quot;statistical_summary&quot;: {
+        &quot;categorical_test_count&quot;: 2,
+        &quot;continuous_test_count&quot;: 18,
+        &quot;distribution_test_count&quot;: 4,
+        &quot;mean_jensen_shannon_divergence&quot;: 0.0,
+        &quot;module_name&quot;: &quot;hypertension&quot;,
+        &quot;prevalence_test_count&quot;: 9,
+        &quot;significant_after_fdr_count&quot;: 9,
+        &quot;significant_test_count&quot;: 21,
+        &quot;skip_reason&quot;: null,
+        &quot;skipped&quot;: false,
+        &quot;valid_for_statistical_comparison&quot;: true,
+        &quot;validation_status&quot;: &quot;partially_comparable&quot;
+      },
+      &quot;tables&quot;: {
+        &quot;categorical_tests&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:categorical_tests&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;scope&quot;,
+            &quot;domain&quot;,
+            &quot;test_name&quot;,
+            &quot;statistic&quot;,
+            &quot;p_value&quot;,
+            &quot;effect_size&quot;,
+            &quot;significant&quot;,
+            &quot;n_synthea&quot;,
+            &quot;n_psynthea&quot;,
+            &quot;notes&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/categorical_tests.csv&quot;,
+          &quot;rows&quot;: 2,
+          &quot;sha256&quot;: &quot;f462b35cfef7c5ca88d6f7efdfa79c472b326bc075832af26af5ec659408ed5b&quot;,
+          &quot;size_bytes&quot;: 344
+        },
+        &quot;continuous_tests&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:continuous_tests&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;scope&quot;,
+            &quot;metric&quot;,
+            &quot;test_name&quot;,
+            &quot;statistic&quot;,
+            &quot;p_value&quot;,
+            &quot;effect_size&quot;,
+            &quot;significant&quot;,
+            &quot;n_synthea&quot;,
+            &quot;n_psynthea&quot;,
+            &quot;notes&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/continuous_tests.csv&quot;,
+          &quot;rows&quot;: 18,
+          &quot;sha256&quot;: &quot;3888968b89581ac0868972372b983a1bea19881efb7c69bf35f4f78ba14ad9f0&quot;,
+          &quot;size_bytes&quot;: 2220
+        },
+        &quot;distribution_tests&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:distribution_tests&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;scope&quot;,
+            &quot;domain&quot;,
+            &quot;test_name&quot;,
+            &quot;statistic&quot;,
+            &quot;p_value&quot;,
+            &quot;effect_size&quot;,
+            &quot;jensen_shannon_divergence&quot;,
+            &quot;significant&quot;,
+            &quot;n_synthea&quot;,
+            &quot;n_psynthea&quot;,
+            &quot;notes&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/distribution_tests.csv&quot;,
+          &quot;rows&quot;: 4,
+          &quot;sha256&quot;: &quot;c04270c9def964e72ad74c7b81e8b65d4f9193b4bda1c64c6547882e71919f49&quot;,
+          &quot;size_bytes&quot;: 552
+        },
+        &quot;functional_clinical_signal&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:functional_clinical_signal&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;domain&quot;,
+            &quot;synthea_signal_count&quot;,
+            &quot;psynthea_signal_count&quot;,
+            &quot;shared_code_count&quot;,
+            &quot;synthea_only_code_count&quot;,
+            &quot;psynthea_only_code_count&quot;,
+            &quot;expected_signal_detected_synthea&quot;,
+            &quot;expected_signal_detected_psynthea&quot;,
+            &quot;expected_terms&quot;,
+            &quot;blocking_issue&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/functional_clinical_signal.csv&quot;,
+          &quot;rows&quot;: 4,
+          &quot;sha256&quot;: &quot;cfcfe8dcfdd8070272bc1df6b714ccf96b25402499cc39553d55f13aa7b17401&quot;,
+          &quot;size_bytes&quot;: 407
+        },
+        &quot;functional_distributional_similarity&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:functional_distributional_similarity&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;domain&quot;,
+            &quot;synthea_total&quot;,
+            &quot;psynthea_total&quot;,
+            &quot;shared_code_count&quot;,
+            &quot;synthea_only_code_count&quot;,
+            &quot;psynthea_only_code_count&quot;,
+            &quot;jaccard_similarity&quot;,
+            &quot;overlap_coefficient&quot;,
+            &quot;jensen_shannon_divergence&quot;,
+            &quot;valid_for_distributional_comparison&quot;,
+            &quot;blocking_issue&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/functional_distributional_similarity.csv&quot;,
+          &quot;rows&quot;: 4,
+          &quot;sha256&quot;: &quot;eb04d2f6925f03e04cbff8b5c326eff055f1a38a129ae6fb4cf8e213a118f775&quot;,
+          &quot;size_bytes&quot;: 450
+        },
+        &quot;functional_issues&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:functional_issues&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;severity&quot;,
+            &quot;domain&quot;,
+            &quot;issue&quot;,
+            &quot;details&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/functional_issues.csv&quot;,
+          &quot;rows&quot;: 2,
+          &quot;sha256&quot;: &quot;238f47cc153ecdef05138874ec6fa6494aab38b883ddd8ce3610050c666293ff&quot;,
+          &quot;size_bytes&quot;: 239
+        },
+        &quot;functional_summary&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:functional_summary&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;status&quot;,
+            &quot;status_reason&quot;,
+            &quot;synthea_functional&quot;,
+            &quot;psynthea_functional&quot;,
+            &quot;valid_for_comparison&quot;,
+            &quot;blocking_issue_count&quot;,
+            &quot;warning_count&quot;,
+            &quot;synthea_condition_count&quot;,
+            &quot;psynthea_condition_count&quot;,
+            &quot;synthea_observation_count&quot;,
+            &quot;psynthea_observation_count&quot;,
+            &quot;mean_distributional_similarity&quot;,
+            &quot;mean_jensen_shannon_divergence&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/functional_summary.csv&quot;,
+          &quot;rows&quot;: 1,
+          &quot;sha256&quot;: &quot;ab34728d26d98adf650b63b550980c5f5685eb4c572f46c185f6645bb7096315&quot;,
+          &quot;size_bytes&quot;: 480
+        },
+        &quot;functional_table_status&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:functional_table_status&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;table&quot;,
+            &quot;synthea_available&quot;,
+            &quot;psynthea_available&quot;,
+            &quot;synthea_rows&quot;,
+            &quot;psynthea_rows&quot;,
+            &quot;synthea_empty&quot;,
+            &quot;psynthea_empty&quot;,
+            &quot;row_difference&quot;,
+            &quot;relative_row_difference&quot;,
+            &quot;required&quot;,
+            &quot;blocking_issue&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/functional_table_status.csv&quot;,
+          &quot;rows&quot;: 6,
+          &quot;sha256&quot;: &quot;894d0b50175fd337b2336ecec9ac882a25065ac79a9477c903366e5bef8b87f1&quot;,
+          &quot;size_bytes&quot;: 629
+        },
+        &quot;prevalence_tests&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:prevalence_tests&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;scope&quot;,
+            &quot;domain&quot;,
+            &quot;code&quot;,
+            &quot;synthea_events&quot;,
+            &quot;synthea_total&quot;,
+            &quot;psynthea_events&quot;,
+            &quot;psynthea_total&quot;,
+            &quot;synthea_prevalence&quot;,
+            &quot;psynthea_prevalence&quot;,
+            &quot;absolute_difference&quot;,
+            &quot;relative_difference&quot;,
+            &quot;risk_ratio&quot;,
+            &quot;risk_ratio_ci_lower&quot;,
+            &quot;risk_ratio_ci_upper&quot;,
+            &quot;odds_ratio&quot;,
+            &quot;odds_ratio_ci_lower&quot;,
+            &quot;odds_ratio_ci_upper&quot;,
+            &quot;test_name&quot;,
+            &quot;statistic&quot;,
+            &quot;p_value&quot;,
+            &quot;adjusted_p_value&quot;,
+            &quot;significant&quot;,
+            &quot;significant_after_fdr&quot;,
+            &quot;notes&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/prevalence_tests.csv&quot;,
+          &quot;rows&quot;: 9,
+          &quot;sha256&quot;: &quot;c2a6d14838872a6f1b6debe1e8ceedd808a5eba6fc1cb261b802e23441f235c7&quot;,
+          &quot;size_bytes&quot;: 2878
+        },
+        &quot;statistical_summary&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:validation:hypertension:statistical_summary&quot;,
+          &quot;columns&quot;: [
+            &quot;module_name&quot;,
+            &quot;validation_status&quot;,
+            &quot;valid_for_statistical_comparison&quot;,
+            &quot;skipped&quot;,
+            &quot;skip_reason&quot;,
+            &quot;continuous_test_count&quot;,
+            &quot;categorical_test_count&quot;,
+            &quot;prevalence_test_count&quot;,
+            &quot;distribution_test_count&quot;,
+            &quot;significant_test_count&quot;,
+            &quot;significant_after_fdr_count&quot;,
+            &quot;mean_jensen_shannon_divergence&quot;
+          ],
+          &quot;path&quot;: &quot;validation/modules/hypertension/statistical_summary.csv&quot;,
+          &quot;rows&quot;: 1,
+          &quot;sha256&quot;: &quot;858b1ea318108557968f88c7e59eafa224f8d6f9658bab108327742d5c6cda6c&quot;,
+          &quot;size_bytes&quot;: 320
+        }
+      }
+    }
+  ],
+  &quot;schema_version&quot;: &quot;1.0&quot;
+}</pre></details><details><summary>Knowledge Engine summary</summary><pre>{
+  &quot;aggregate&quot;: {
+    &quot;blocking_finding_count&quot;: 32,
+    &quot;finding_count&quot;: 56,
+    &quot;incomplete_rule_count&quot;: 6,
+    &quot;module_count&quot;: 1,
+    &quot;recommendation_count&quot;: 15,
+    &quot;research_ready_count&quot;: 0
+  },
+  &quot;configuration&quot;: {
+    &quot;research_use&quot;: true,
+    &quot;strict_evidence&quot;: true
+  },
+  &quot;generated_at&quot;: &quot;2026-07-17T11:40:13.020541+00:00&quot;,
+  &quot;modules&quot;: [
+    {
+      &quot;artifacts&quot;: {
+        &quot;json&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:knowledge:hypertension:json&quot;,
+          &quot;path&quot;: &quot;knowledge/modules/hypertension/interpretation_report.json&quot;,
+          &quot;sha256&quot;: &quot;3ee9ba120332fb9913f8fcfa90544347545ce85b59b1a3a03cb8d68059252e51&quot;,
+          &quot;size_bytes&quot;: 1408989
+        },
+        &quot;markdown&quot;: {
+          &quot;artifact_id&quot;: &quot;hypertension-equivalence:run-20260717T114007526034Z-92a6751f1cef:knowledge:hypertension:markdown&quot;,
+          &quot;path&quot;: &quot;knowledge/modules/hypertension/interpretation_report.md&quot;,
+          &quot;sha256&quot;: &quot;a4fad613c446908f71155598821b78b802c1916331baec1007f5a332141a169c&quot;,
+          &quot;size_bytes&quot;: 150762
+        }
+      },
+      &quot;blocking_finding_count&quot;: 32,
+      &quot;finding_count&quot;: 56,
+      &quot;incomplete_rule_count&quot;: 6,
+      &quot;module_name&quot;: &quot;hypertension&quot;,
+      &quot;overall_status&quot;: &quot;fail&quot;,
+      &quot;recommendation_count&quot;: 15,
+      &quot;research_use_ready&quot;: false
+    }
+  ],
+  &quot;schema_version&quot;: &quot;1.0&quot;
+}</pre></details><details><summary>Root Cause Engine summary</summary><pre>{
+  &quot;conclusion&quot;: {
+    &quot;confidence&quot;: &quot;none&quot;,
+    &quot;executive_summary&quot;: &quot;Root-cause analysis completed: 19 inconclusive, 1 plausible.&quot;,
+    &quot;status&quot;: &quot;inconclusive&quot;
+  },
+  &quot;counts&quot;: {
+    &quot;artifacts&quot;: 53,
+    &quot;candidates&quot;: 20,
+    &quot;evidence&quot;: 57,
+    &quot;findings&quot;: 20,
+    &quot;reproduction_plans&quot;: 0,
+    &quot;selected_candidates&quot;: 1,
+    &quot;signals&quot;: 20,
+    &quot;verifications&quot;: 0
+  },
+  &quot;engine&quot;: {
+    &quot;schema_version&quot;: 2,
+    &quot;stages&quot;: [
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.301935+00:00&quot;,
+        &quot;input_count&quot;: 57,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 57,
+        &quot;stage&quot;: &quot;evidence_collection&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.299533+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.302927+00:00&quot;,
+        &quot;input_count&quot;: 57,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 20,
+        &quot;stage&quot;: &quot;signal_extraction&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.301943+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.324560+00:00&quot;,
+        &quot;input_count&quot;: 20,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 20,
+        &quot;stage&quot;: &quot;candidate_generation&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.302934+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.326359+00:00&quot;,
+        &quot;input_count&quot;: 20,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 20,
+        &quot;stage&quot;: &quot;candidate_ranking&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.324566+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.327027+00:00&quot;,
+        &quot;input_count&quot;: 20,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 0,
+        &quot;stage&quot;: &quot;verification&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.326408+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.329697+00:00&quot;,
+        &quot;input_count&quot;: 20,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 20,
+        &quot;stage&quot;: &quot;attribution&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.327046+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.330030+00:00&quot;,
+        &quot;input_count&quot;: 20,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 20,
+        &quot;stage&quot;: &quot;classification&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.329707+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.330037+00:00&quot;,
+        &quot;input_count&quot;: 1,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 0,
+        &quot;stage&quot;: &quot;reproduction&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.330035+00:00&quot;
+      },
+      {
+        &quot;finished_at&quot;: &quot;2026-07-17T11:40:13.330697+00:00&quot;,
+        &quot;input_count&quot;: 20,
+        &quot;metadata&quot;: {},
+        &quot;output_count&quot;: 1,
+        &quot;stage&quot;: &quot;report_assembly&quot;,
+        &quot;started_at&quot;: &quot;2026-07-17T11:40:13.330511+00:00&quot;
+      }
+    ],
+    &quot;total_duration_seconds&quot;: 0.030586
+  },
+  &quot;generated_at&quot;: &quot;2026-07-17T11:40:13.330756+00:00&quot;,
+  &quot;identity&quot;: {
+    &quot;experiment_id&quot;: &quot;hypertension-equivalence&quot;,
+    &quot;report_id&quot;: &quot;root-cause-report:809ad3c353131e64318cf094&quot;,
+    &quot;request_id&quot;: &quot;root-cause.hypertension-equivalence.run-20260717T114007526034Z-92a6751f1cef&quot;,
+    &quot;run_id&quot;: &quot;run-20260717T114007526034Z-92a6751f1cef&quot;
+  },
+  &quot;limitations&quot;: [
+    &quot;The leading hypothesis lacks sufficient supporting evidence.&quot;,
+    &quot;No deterministic verification was available.&quot;,
+    &quot;No non-refuted candidate remained after deterministic assessment.&quot;,
+    &quot;Candidate generation exceeded RootCauseRequest.max_candidates; complete alternative-candidate components were retained in deterministic source-priority order.&quot;,
+    &quot;No explicit verification plan was available for candidate.&quot;
+  ],
+  &quot;schema_version&quot;: &quot;2.0.0&quot;
+}</pre></details><div class="callout"><strong>Full machine-readable outputs:</strong> Complete Validation, Knowledge and Root Cause payloads remain available as separately hashed source artifacts listed in the manifest above. They are intentionally not duplicated inside this HTML report.</div></section>
+<div class="footer">Generated deterministically from persisted Validation, Knowledge and Root Cause artifacts. The reporting stage consolidates and formats evidence; it does not recalculate scientific results.</div>
+</main></body></html>

@@ -546,8 +546,17 @@ class RootCauseEngineResult:
             raise ValueError(
                 "attribution_results must contain exactly one entry for every report candidate."
             )
-        if any(key != value.candidate_id for key, value in self.attribution_results.items()):
-            raise ValueError("attribution_results keys must equal AttributionResult.candidate_id.")
+        inconsistent_attribution_ids = {
+            key: value.metadata.get("candidate_id")
+            for key, value in self.attribution_results.items()
+            if value.metadata.get("candidate_id") is not None
+            and value.metadata.get("candidate_id") != key
+        }
+        if inconsistent_attribution_ids:
+            raise ValueError(
+                "attribution_results keys must match metadata candidate_id values when present: "
+                f"{inconsistent_attribution_ids!r}."
+            )
         report_signal_ids = {item.id for item in self.report.signals}
         if not set(self.reproduction_builds).issubset(report_signal_ids):
             raise ValueError("reproduction_builds may only be keyed by report signal ids.")

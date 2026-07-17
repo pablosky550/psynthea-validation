@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hypertension equivalence: Synthea vs psynthea</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;max-width:1100px;margin:40px auto;padding:0 24px;line-height:1.5}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:8px;text-align:left}code{overflow-wrap:anywhere}.decision{font-size:1.4rem;font-weight:700}
+</style>
+</head>
+<body>
+<h1>Hypertension equivalence: Synthea vs psynthea</h1>
+<p><strong>Experiment:</strong> hypertension-equivalence</p>
+<p><strong>Run:</strong> run-20260717T104023348555Z-365e5b4a1336</p>
+<p class="decision">Decision: REVIEW</p>
+<h2>Pipeline stages</h2>
+<table><thead><tr><th>Stage</th><th>Status</th><th>Summary</th></tr></thead><tbody><tr><td>workspace_initialization</td><td>succeeded</td><td>Experiment workspace created and ownership verified.</td></tr>
+<tr><td>cohort_loading</td><td>succeeded</td><td>Loaded and verified Synthea and psynthea cohorts from 10 canonical CSV artefacts.</td></tr>
+<tr><td>cohort_normalization</td><td>succeeded</td><td>Normalized Synthea and psynthea cohorts into 12 deterministic canonical datasets.</td></tr>
+<tr><td>validation</td><td>succeeded</td><td>Executed functional and statistical validation for 1 module(s); 1 were statistically comparable.</td></tr>
+<tr><td>knowledge_enrichment</td><td>succeeded</td><td>Executed scientific interpretation for 1 module(s); 0 are ready for research use and 32 blocking finding(s) were identified.</td></tr>
+<tr><td>root_cause_analysis</td><td>succeeded</td><td>Root-cause analysis completed with 20 finding(s), 20 candidate(s) and status &#x27;inconclusive&#x27;.</td></tr></tbody></table>
+<h2>Scientific source artifacts</h2><ul><li><strong>validation_result</strong>: <code>validation/validation_result.json</code> (<code>7b8174089130e0d78dbe649fefc22d5ed5a748485742e6be7ffe29b21fe9a90f</code>)</li>
+<li><strong>knowledge_result</strong>: <code>knowledge/knowledge_result.json</code> (<code>7ade5b8a47d44113f7c3fdec8e47caddadc71760531c194d32053ca789568c3f</code>)</li>
+<li><strong>root_cause_result</strong>: <code>root_cause/root_cause_result.json</code> (<code>537aa95cae112eb9f3d5f86e3e15bd0ff66cb14e7dc75d48f9ef63a525f0ad00</code>)</li></ul>
+<h2>Machine-readable summary</h2>
+<pre>{
+  &quot;knowledge&quot;: {
+    &quot;aggregate&quot;: {
+      &quot;blocking_finding_count&quot;: 32,
+      &quot;finding_count&quot;: 56,
+      &quot;incomplete_rule_count&quot;: 6,
+      &quot;module_count&quot;: 1,
+      &quot;recommendation_count&quot;: 15,
+      &quot;research_ready_count&quot;: 0
+    },
+    &quot;schema_version&quot;: &quot;1.0&quot;
+  },
+  &quot;root_cause&quot;: {
+    &quot;schema_version&quot;: &quot;2.0.0&quot;
+  },
+  &quot;validation&quot;: {
+    &quot;aggregate&quot;: {
+      &quot;blocking_issue_count&quot;: 0,
+      &quot;comparable_module_count&quot;: 1,
+      &quot;module_count&quot;: 1,
+      &quot;significant_after_fdr_count&quot;: 9,
+      &quot;significant_test_count&quot;: 21,
+      &quot;skipped_module_count&quot;: 0,
+      &quot;warning_count&quot;: 2
+    },
+    &quot;schema_version&quot;: &quot;1.0&quot;
+  }
+}</pre>
+</body>
+</html>

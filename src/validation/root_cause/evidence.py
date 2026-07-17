@@ -1531,8 +1531,16 @@ def _canonical_value(value: Any) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
         return {item.name: _canonical_value(getattr(value, item.name)) for item in fields(value)}
     if isinstance(value, Mapping):
-        if any(not isinstance(key, str) for key in value):
-            raise TypeError("Canonical mapping keys must be strings.")
+        for candidate_id, result in self.attribution_results.items():
+            metadata_candidate_id = result.metadata.get("candidate_id")
+        if (
+            metadata_candidate_id is not None
+            and metadata_candidate_id != candidate_id
+        ):
+            raise ValueError(
+                "attribution_results keys must match "
+                "AttributionResult.metadata['candidate_id'] when present."
+            )
         return {key: _canonical_value(value[key]) for key in sorted(value)}
     if isinstance(value, (set, frozenset)):
         items = [_canonical_value(item) for item in value]

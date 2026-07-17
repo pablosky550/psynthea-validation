@@ -148,10 +148,15 @@ class RootCauseStageHandler:
             payload.engine_inputs,
         )
 
+        document_generated_at = max(
+            _aware_datetime(self.clock(), "clock result"),
+            engine_result.report.generated_at,
+        )
+
         document = build_root_cause_document(
             engine_result,
             configuration=self.report_configuration,
-            generated_at=created_at,
+            generated_at=document_generated_at,
             metadata={
                 "orchestrator_run_id": context.run_id,
                 "experiment_id": context.config.id,
