@@ -1,0 +1,5 @@
+module_name,scope,domain,test_name,statistic,p_value,effect_size,jensen_shannon_divergence,significant,n_synthea,n_psynthea,notes
+hypertension,code_distribution,conditions,chi_square,,,,0.0,,,,No comparable coded distribution available.
+hypertension,code_distribution,medications,chi_square,,,,,,,,No comparable coded distribution available.
+hypertension,code_distribution,procedures,chi_square,,,,,,,,No comparable coded distribution available.
+hypertension,code_distribution,observations,chi_square,6476.426358907398,0.0,0.9837613357144366,0.1903145673204594,True,3227.0,3465.0,

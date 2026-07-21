@@ -50,9 +50,19 @@ _COHORT_FIELDS = frozenset(
         "population",
         "seed",
         "modules",
+        "module_files",
         "reference_date",
         "min_age",
         "max_age",
+        "step_days",
+        "years_of_history",
+        "wellness_encounters",
+        "vitals",
+        "mortality",
+        "keystone",
+        "ground_truth",
+        "output_format",
+        "profile_file",
         "parameters",
     }
 )
@@ -145,7 +155,7 @@ def parse_experiment_config(
         )
 
     base = Path(base_directory).expanduser()
-    cohort = _parse_cohort(_mapping(root["cohort"], "cohort"))
+    cohort = _parse_cohort(_mapping(root["cohort"], "cohort"), base)
     simulators = _parse_simulators(root["simulators"], base)
 
     try:
@@ -167,9 +177,14 @@ def parse_experiment_config(
         ) from error
 
 
-def _parse_cohort(payload: Mapping[str, Any]) -> CohortConfig:
+def _parse_cohort(payload: Mapping[str, Any], base: Path) -> CohortConfig:
     _reject_unknown_fields(payload, _COHORT_FIELDS, "cohort")
-    _require_fields(payload, {"population", "seed", "modules"}, "cohort")
+    _require_fields(payload, {"population", "seed"}, "cohort")
+    if "modules" not in payload and "module_files" not in payload:
+        raise ExperimentConfigurationError(
+            "cohort requires at least one of: modules or module_files.",
+            context={"field": "cohort"},
+        )
 
     reference_date = payload.get("reference_date")
     parsed_reference_date: date | None = None
@@ -187,11 +202,24 @@ def _parse_cohort(payload: Mapping[str, Any]) -> CohortConfig:
         return CohortConfig(
             population=_integer(payload["population"], "cohort.population"),
             seed=_integer(payload["seed"], "cohort.seed"),
-            modules=_string_sequence(payload["modules"], "cohort.modules"),
+            modules=_string_sequence(payload.get("modules", []), "cohort.modules"),
             reference_date=parsed_reference_date,
             min_age=_optional_integer(payload.get("min_age"), "cohort.min_age"),
             max_age=_optional_integer(payload.get("max_age"), "cohort.max_age"),
             parameters=_mapping(payload.get("parameters", {}), "cohort.parameters"),
+            module_files=tuple(
+                _resolve_path(item, base, "cohort.module_files")
+                for item in payload.get("module_files", [])
+            ),
+            step_days=_optional_integer(payload.get("step_days"), "cohort.step_days"),
+            years_of_history=_optional_integer(payload.get("years_of_history"), "cohort.years_of_history"),
+            wellness_encounters=_boolean(payload.get("wellness_encounters", False),"cohort.wellness_encounters"),
+            vitals=_boolean(payload.get("vitals", False),"cohort.vitals"),
+            mortality=_boolean(payload.get("mortality", False),"cohort.mortality"),
+            keystone=_boolean(payload.get("keystone", False),"cohort.keystone"),
+            ground_truth=_boolean(payload.get("ground_truth", False),"cohort.ground_truth"),
+            output_format=_string(payload.get("output_format","csv"),"cohort.output_format"),
+            profile_file=None if payload.get("profile_file") is None else _resolve_path(payload["profile_file"], base, "cohort.profile_file"),
         )
     except (TypeError, ValueError) as error:
         raise ExperimentConfigurationError(
@@ -344,6 +372,15 @@ def _integer(value: Any, field: str) -> int:
 def _optional_integer(value: Any, field: str) -> int | None:
     return None if value is None else _integer(value, field)
 
+
+
+def _boolean(value: Any, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ExperimentConfigurationError(
+            f"{field} must be a boolean.",
+            context={"field": field},
+        )
+    return value
 
 def _number(value: Any, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):

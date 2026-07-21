@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from html import escape
 import json
+import re
 from pathlib import Path
 from typing import Any, Final
 
@@ -31,9 +32,10 @@ from validation.orchestration.orchestrator import (
 __all__ = [
     "ReportGenerationStageError",
     "ReportGenerationStageHandler",
+    "ScientificNarrativeFormatter",
 ]
 
-_REPORT_SCHEMA_VERSION: Final = "1.3.3"
+_REPORT_SCHEMA_VERSION: Final = "6.0.0"
 _REPORT_PRODUCER: Final = "scientific_report_stage"
 _REPORT_JSON_PATH: Final = "report/scientific_report.json"
 _REPORT_HTML_PATH: Final = "report/scientific_report.html"
@@ -47,6 +49,273 @@ _REQUIRED_UPSTREAM_ARTIFACTS: Final = {
 
 class ReportGenerationStageError(RuntimeError):
     """Raised when a truthful final report cannot be composed."""
+
+
+@dataclass(frozen=True, slots=True)
+class ScientificNarrativeFormatter:
+    """Translate persisted evidence into publication-oriented scientific prose.
+
+    The formatter never calculates new scientific results. It only selects,
+    rounds and narrates values already present in the upstream artifacts.
+    """
+
+    decision: str
+    module_label: str
+    knowledge: Mapping[str, Any]
+    root_cause: Mapping[str, Any]
+    discrepancies: Sequence[Mapping[str, Any]]
+
+    def abstract(self) -> str:
+        """Return a structured IMRaD-style abstract."""
+        objective = (
+            f"To determine whether Psynthea reproduces Synthea outputs for "
+            f"{self.module_label} within the configured functional, statistical "
+            "and clinical validation scope."
+        )
+        methods = (
+            "Persisted cohorts were compared using deterministic functional "
+            "checks, multiplicity-adjusted statistical evidence, clinical and "
+            "epidemiological interpretation, and hypothesis-generating "
+            "root-cause analysis."
+        )
+        results = self.results_summary(max_findings=3)
+        conclusion = self.conclusion()
+        return (
+            f"<p><strong>Objective.</strong> {escape(objective)}</p>"
+            f"<p><strong>Methods.</strong> {escape(methods)}</p>"
+            f"<p><strong>Results.</strong> {escape(results)}</p>"
+            f"<p><strong>Conclusion.</strong> {escape(conclusion)}</p>"
+        )
+
+    def results_summary(self, *, max_findings: int = 3) -> str:
+        """Summarise the highest-priority findings without exposing engine prose."""
+        if not self.discrepancies:
+            return (
+                "No scientifically material discrepancy was identified in the "
+                "persisted evidence."
+            )
+        statements = [
+            self.finding_sentence(item)
+            for item in self.discrepancies[:max_findings]
+        ]
+        return " ".join(statement for statement in statements if statement)
+
+    def conclusion(self) -> str:
+        """Return the publication-facing conclusion."""
+        modules = _mapping_sequence(self.knowledge.get("modules"))
+        ready = bool(modules) and all(
+            bool(module.get("research_use_ready")) for module in modules
+        )
+        if self.decision == "INCOMPLETE":
+            return (
+                "The available evidence is incomplete and does not permit a "
+                "defensible equivalence conclusion."
+            )
+        if self.decision == "PASS" and ready and not self.discrepancies:
+            return (
+                "The persisted evidence supports replacement of Synthea by "
+                "Psynthea within the evaluated scope and stated limitations."
+            )
+        return (
+            "Scientific equivalence was not demonstrated. Psynthea should not "
+            "replace Synthea for downstream research in the evaluated scope "
+            "until blocking discrepancies are resolved and independently "
+            "reproduced."
+        )
+
+    def finding_sentence(self, item: Mapping[str, Any]) -> str:
+        """Narrate one finding as a concise result sentence."""
+        domain = _humanize(
+            str(item.get("domain") or item.get("key") or "endpoint")
+        ).lower()
+        category = str(item.get("category") or "")
+        stats = _extract_display_statistics(
+            item.get("related_findings") or ()
+        )
+        reference = item.get("synthea")
+        candidate = item.get("psynthea")
+
+        if category == "missing_candidate_output":
+            return (
+                f"Psynthea did not reproduce {domain} output observed in "
+                f"Synthea ({_fmt(reference)} versus {_fmt(candidate)} records)."
+            )
+        if category == "candidate_only_output":
+            return (
+                f"Psynthea introduced {domain} output that was absent from "
+                f"Synthea ({_fmt(candidate)} versus {_fmt(reference)} records)."
+            )
+        if category == "volume_difference":
+            direction = "more" if (_relative_difference(reference, candidate) or 0) > 0 else "fewer"
+            sentence = (
+                f"Psynthea contained materially {direction} {domain} records "
+                f"than Synthea ({_fmt(candidate)} versus {_fmt(reference)}; "
+                f"{item.get('difference') or 'difference not estimable'})."
+            )
+            inferential = self._inferential_clause(stats)
+            return sentence[:-1] + (f"; {inferential}." if inferential else ".")
+        title = str(item.get("title") or "").casefold()
+        if "code concordance" in title or "code overlap" in title:
+            shared = stats.get("shared")
+            jaccard = stats.get("jaccard")
+            jsd = stats.get("jsd")
+            components = []
+            if shared is not None:
+                components.append(f"{_fmt(shared)} shared clinical codes")
+            if jaccard is not None:
+                components.append(f"Jaccard index {float(jaccard):.2f}")
+            if jsd is not None:
+                components.append(f"JSD {float(jsd):.3f}")
+            evidence = ", ".join(components) or "persisted concordance evidence"
+            return (
+                f"Clinical coding for {domain} was not concordant between "
+                f"generators ({evidence})."
+            )
+        if "prevalence" in title:
+            s_prev = stats.get("synthea_prevalence")
+            p_prev = stats.get("psynthea_prevalence")
+            sentence = (
+                f"The prevalence of {domain} differed between Synthea "
+                f"({_format_percent(s_prev)}) and Psynthea "
+                f"({_format_percent(p_prev)})."
+            )
+            inferential = self._inferential_clause(stats)
+            return sentence[:-1] + (f"; {inferential}." if inferential else ".")
+        return _clean_research_text(
+            str(
+                item.get("evidence")
+                or item.get("impact")
+                or "Persisted evidence identified a material discrepancy."
+            )
+        )
+
+    def observed_result(self, item: Mapping[str, Any]) -> str:
+        """Return a result-focused narrative with persisted estimates."""
+        sentence = self.finding_sentence(item)
+        return sentence or "A material discrepancy was identified."
+
+    def scientific_interpretation(self, item: Mapping[str, Any]) -> str:
+        """Explain what the result means scientifically."""
+        title = str(item.get("title") or "").casefold()
+        category = str(item.get("category") or "")
+        if category == "missing_candidate_output":
+            return (
+                "The candidate implementation does not preserve an output domain "
+                "present in the reference implementation, precluding equivalence "
+                "for analyses that depend on that domain."
+            )
+        if category == "candidate_only_output":
+            return (
+                "The candidate implementation introduces events not represented "
+                "in the reference implementation, indicating non-equivalent "
+                "generation semantics."
+            )
+        if category == "volume_difference":
+            return (
+                "The magnitude of the between-generator difference exceeded the "
+                "configured materiality threshold and is inconsistent with "
+                "equivalent event-generation behaviour."
+            )
+        if "code concordance" in title or "code overlap" in title:
+            return (
+                "The generators do not represent sufficiently comparable clinical "
+                "concepts or concept-frequency distributions for this domain."
+            )
+        if "prevalence" in title:
+            return (
+                "The population-level clinical burden is not reproduced within "
+                "the evaluated equivalence criteria."
+            )
+        return (
+            "The persisted evidence does not support scientific equivalence for "
+            "this endpoint."
+        )
+
+    def scientific_implication(self, item: Mapping[str, Any]) -> str:
+        """State the implication for downstream research."""
+        domain = _humanize(
+            str(item.get("domain") or "this endpoint")
+        ).lower()
+        title = str(item.get("title") or "").casefold()
+        category = str(item.get("category") or "")
+        if category == "missing_candidate_output":
+            return (
+                f"Studies using {domain} would systematically omit clinically "
+                "relevant events if Psynthea were substituted for Synthea."
+            )
+        if "observations" in title:
+            return (
+                "Phenotyping, monitoring and outcome analyses based on "
+                "observations may yield materially different results."
+            )
+        if "prevalence" in title:
+            return (
+                "Disease-burden estimates, cohort definitions and epidemiological "
+                "comparisons may be biased or non-comparable."
+            )
+        return (
+            "Downstream estimates may differ by generator; replacement is not "
+            "scientifically justified until this discrepancy is resolved."
+        )
+
+    def overall_interpretation(self) -> str:
+        """Return the main Discussion interpretation."""
+        if self.decision == "INCOMPLETE":
+            return (
+                "The experiment did not provide a complete evidence chain, so "
+                "equivalence and replacement cannot be assessed."
+            )
+        if not self.discrepancies:
+            return (
+                "Across the evaluated evidence layers, no material discrepancy "
+                "was identified. Interpretation remains restricted to the "
+                "configured modules, cohort and validation criteria."
+            )
+        return (
+            "Multiple independent evidence layers converge on the same conclusion: "
+            "the observed differences are not adequately explained by a single "
+            "minor fluctuation and instead indicate non-equivalent generator "
+            "behaviour within the evaluated scope."
+        )
+
+    def clinical_implications(self) -> str:
+        """Return a clinical-impact synthesis."""
+        if not self.discrepancies:
+            return (
+                "No material clinical implication was identified within the "
+                "evaluated endpoints."
+            )
+        implications = [
+            self.scientific_implication(item)
+            for item in self.discrepancies[:3]
+        ]
+        return " ".join(dict.fromkeys(implications))
+
+    def methodological_implications(self) -> str:
+        """Return implications for validation design and interpretation."""
+        return (
+            "Agreement in cohort size or successful pipeline execution must not be "
+            "interpreted as scientific equivalence. Replacement requires concordant "
+            "output retention, event volumes, clinical semantics and endpoint-level "
+            "evidence after multiplicity adjustment."
+        )
+
+    def _inferential_clause(self, stats: Mapping[str, Any]) -> str:
+        parts: list[str] = []
+        rr = stats.get("risk_ratio")
+        lo = stats.get("ci_lower")
+        hi = stats.get("ci_upper")
+        p = stats.get("adjusted_p")
+        if rr is not None:
+            estimate = f"RR {float(rr):.2f}"
+            if lo is not None and hi is not None:
+                estimate += f", 95% CI {float(lo):.2f}–{float(hi):.2f}"
+            parts.append(estimate)
+        if p is not None:
+            parts.append(f"FDR-adjusted p {_p_value_relation(float(p))}")
+        if not parts:
+            return ""
+        return "; ".join(parts) + ", indicating that equivalence criteria were not met"
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +490,12 @@ def _build_report_payload(
     root_cause = source_payloads[ArtifactKind.ROOT_CAUSE_RESULT]
 
     decision = _decision(context)
+    analysis = _build_scientific_analysis(
+        decision=decision,
+        validation=validation,
+        knowledge=knowledge,
+        root_cause=root_cause,
+    )
     return {
         "schema_version": _REPORT_SCHEMA_VERSION,
         "report_type": "consolidated_scientific_validation_report",
@@ -234,7 +509,7 @@ def _build_report_payload(
         "cohort": {
             "population_size": context.config.cohort.population,
             "seed": context.config.cohort.seed,
-            "modules": list(context.config.cohort.modules),
+            "modules": list(_configured_modules(context, validation, knowledge)),
             "reference_date": (
                 context.config.cohort.reference_date.isoformat()
                 if context.config.cohort.reference_date is not None
@@ -247,6 +522,7 @@ def _build_report_payload(
             knowledge=knowledge,
             root_cause=root_cause,
         ),
+        "scientific_analysis": analysis,
         "stage_summary": [
             {
                 "stage": result.stage.value,
@@ -269,6 +545,81 @@ def _build_report_payload(
         "artifact_count_before_report": len(context.artifacts),
     }
 
+
+
+def _build_scientific_analysis(
+    *,
+    decision: str,
+    validation: Mapping[str, Any],
+    knowledge: Mapping[str, Any],
+    root_cause: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the machine-readable, module-agnostic interpretation layer."""
+    validation_section = _build_validation_section(validation)
+    knowledge_section = _build_knowledge_section(knowledge)
+    root_section = _build_root_cause_section(root_cause)
+    discrepancies = _scientific_discrepancies(validation_section, knowledge_section)
+    return {
+        "decision": decision,
+        "conclusion": _scientific_conclusion_v13(
+            decision,
+            discrepancies,
+            knowledge_section,
+        ),
+        "ranking_method": {
+            "components": [
+                "severity",
+                "blocking_status",
+                "relative_magnitude",
+                "multiplicity_adjusted_significance",
+                "evidence_support",
+            ],
+            "interpretation": (
+                "The deterministic score prioritises investigation and is not "
+                "a clinical effect estimate."
+            ),
+        },
+        "discrepancies": [
+            {
+                key: _plain_value(value)
+                for key, value in item.items()
+                if key != "related_findings"
+            }
+            for item in discrepancies
+        ],
+        "root_cause_status": _mapping(root_section.get("conclusion")).get("status"),
+    }
+
+
+def _configured_modules(
+    context: OrchestrationContext,
+    validation: Mapping[str, Any],
+    knowledge: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Resolve module names from configuration and persisted upstream evidence."""
+    values: list[str] = []
+
+    values.extend(str(item) for item in context.config.cohort.modules if str(item))
+    values.extend(
+        Path(item).stem
+        for item in getattr(context.config.cohort, "module_files", ())
+        if str(item)
+    )
+
+    configuration = _mapping(validation.get("configuration"))
+    values.extend(str(item) for item in _sequence(configuration.get("modules")) if str(item))
+    values.extend(
+        str(module.get("module_name"))
+        for module in _mapping_sequence(validation.get("modules"))
+        if module.get("module_name")
+    )
+    values.extend(
+        str(module.get("module_name"))
+        for module in _mapping_sequence(knowledge.get("modules"))
+        if module.get("module_name")
+    )
+
+    return tuple(dict.fromkeys(value for value in values if value))
 
 def _decision(context: OrchestrationContext) -> str:
     relevant = tuple(
@@ -475,189 +826,252 @@ def _artifact_id(context: OrchestrationContext, suffix: str) -> str:
     return f"{context.config.id}.{context.run_id}.scientific-report.{suffix}"
 
 
+
+
 def _render_html(payload: Mapping[str, Any]) -> str:
     summary = _mapping(payload.get("executive_summary"))
-    scientific_results = _mapping(payload.get("scientific_results"))
-    validation = _mapping(scientific_results.get("validation"))
-    knowledge = _mapping(scientific_results.get("knowledge"))
-    root_cause = _mapping(scientific_results.get("root_cause"))
+    results = _mapping(payload.get("scientific_results"))
+    validation = _mapping(results.get("validation"))
+    knowledge = _mapping(results.get("knowledge"))
+    root = _mapping(results.get("root_cause"))
+    cohort = _mapping(payload.get("cohort"))
     decision = str(payload.get("decision") or "INCOMPLETE").upper()
     discrepancies = _scientific_discrepancies(validation, knowledge)
-    conclusion = _scientific_conclusion_v13(decision, discrepancies, knowledge)
+    module_names = [str(value) for value in _sequence(cohort.get("modules"))]
+    module_label = ", ".join(module_names) or "the configured module set"
+    verdict = _replacement_verdict(decision, knowledge, discrepancies)
+    narrative = ScientificNarrativeFormatter(
+        decision=decision,
+        module_label=module_label,
+        knowledge=knowledge,
+        root_cause=root,
+        discrepancies=discrepancies,
+    )
 
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(str(payload.get('experiment_name') or 'Scientific validation report'))}</title>
 <style>
-:root{{--ink:#152238;--muted:#64748b;--line:#dbe3ec;--paper:#fff;--canvas:#f3f6f9;--navy:#15385f;--blue:#2368a2;--green:#18724a;--amber:#9a5a00;--red:#a32634;--soft-red:#fff1f3;--soft-amber:#fff7e8;--soft-green:#edf8f2;--soft-blue:#edf5fc;--soft-gray:#f7f9fb}}
-*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--canvas);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.55}}main{{max-width:1180px;margin:auto;padding:28px 22px 72px}}header,.section{{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:28px;margin-bottom:20px;box-shadow:0 2px 8px rgba(20,40,70,.035)}}h1{{font-size:2rem;margin:0 0 6px}}h2{{font-size:1.35rem;color:var(--navy);margin:0 0 18px}}h3{{font-size:1.05rem;margin:18px 0 9px}}p{{margin:8px 0}}a{{color:var(--blue)}}.eyebrow{{font-size:.78rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--blue)}}.muted{{color:var(--muted)}}.decision-row{{display:grid;grid-template-columns:minmax(220px,.72fr) 2fr;gap:20px;align-items:stretch;margin-top:22px}}.decision-box{{border-radius:12px;padding:24px;background:{_decision_background(decision)};border:1px solid {_decision_border(decision)}}}.decision-label{{font-size:.77rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}}.decision-value{{font-size:2.2rem;font-weight:900;margin-top:4px;color:{_decision_color(decision)}}}.conclusion{{border-left:5px solid {_decision_color(decision)};padding:18px 20px;background:#fafbfd;border-radius:8px;font-size:1.03rem}}.meta,.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px}}.meta{{margin-top:20px}}.card{{border:1px solid var(--line);border-radius:10px;padding:15px;background:#fbfcfe}}.label{{display:block;color:var(--muted);font-size:.73rem;font-weight:750;text-transform:uppercase;letter-spacing:.045em}}.value{{display:block;font-size:1.17rem;font-weight:800;margin-top:3px;overflow-wrap:anywhere}}nav{{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}}nav a{{display:inline-block;margin:4px 14px 4px 0;text-decoration:none;font-weight:650;font-size:.9rem}}table{{width:100%;border-collapse:collapse;font-size:.91rem}}th,td{{padding:11px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}}th{{background:#f5f8fb;color:var(--navy);font-size:.78rem;text-transform:uppercase;letter-spacing:.035em}}tr:last-child td{{border-bottom:0}}.badge{{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.72rem;font-weight:850;text-transform:uppercase;letter-spacing:.035em}}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{{background:var(--soft-green);color:var(--green)}}.badge-review,.badge-warning,.badge-plausible,.badge-high{{background:var(--soft-amber);color:var(--amber)}}.badge-fail,.badge-failed,.badge-blocking,.badge-critical,.badge-urgent,.badge-not-demonstrated{{background:var(--soft-red);color:var(--red)}}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-out-of-scope{{background:#eef1f5;color:#566273}}.discrepancy{{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}}.discrepancy h3{{margin:4px 0 8px}}.discrepancy-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}}.mini{{background:var(--soft-gray);padding:11px 13px;border-radius:8px}}.strength{{font-weight:800}}.bar{{height:7px;background:#e7edf3;border-radius:99px;overflow:hidden;margin-top:7px}}.bar span{{display:block;height:100%;background:var(--navy)}}.delta-negative{{color:var(--red);font-weight:800}}.delta-positive{{color:var(--red);font-weight:800}}.delta-neutral{{color:var(--green);font-weight:800}}.recommendation{{display:grid;grid-template-columns:42px 1fr;gap:14px;border-bottom:1px solid var(--line);padding:15px 0}}.recommendation:last-child{{border:0}}.rank{{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font-weight:850}}.callout{{background:var(--soft-blue);border-left:4px solid var(--blue);padding:14px 17px;border-radius:7px}}.scope-grid{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}.scope-box{{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}}details{{border:1px solid var(--line);border-radius:9px;padding:12px 15px;margin:10px 0;background:#fff}}summary{{cursor:pointer;font-weight:750;color:var(--navy)}}pre{{white-space:pre-wrap;word-break:break-word;background:#111b2a;color:#e9eef6;padding:16px;border-radius:8px;max-height:560px;overflow:auto;font-size:.79rem}}ul{{padding-left:21px}}.empty{{color:var(--muted);font-style:italic}}.footer{{text-align:center;color:var(--muted);font-size:.82rem;margin-top:20px}}@media(max-width:760px){{.decision-row,.scope-grid{{grid-template-columns:1fr}}header,.section{{padding:20px}}}}@media print{{body{{background:#fff}}main{{max-width:none;padding:0}}header,.section{{box-shadow:none;break-inside:avoid}}nav{{display:none}}details{{break-inside:avoid}}}}
+:root{{--ink:#172033;--muted:#657187;--line:#dbe2ea;--paper:#fff;--canvas:#f4f6f8;--navy:#183b63;--blue:#286da8;--green:#18734a;--amber:#9a5c00;--red:#a62b39;--soft-green:#edf8f2;--soft-amber:#fff7e8;--soft-red:#fff1f3;--soft-blue:#eef6fd;--soft:#f7f9fb}}
+*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.62 Georgia,"Times New Roman",serif}}main{{max-width:1080px;margin:auto;padding:30px 22px 76px}}header,.paper-section{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:32px 36px;margin-bottom:22px;box-shadow:0 2px 9px rgba(22,40,65,.035)}}h1,h2,h3,.eyebrow,.label,.badge,nav,.value,.verdict-value,.answer,summary,th{{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}h1{{font-size:2.15rem;line-height:1.16;margin:4px 0 8px}}h2{{font-size:1.42rem;color:var(--navy);margin:0 0 19px}}h3{{font-size:1.04rem;margin:21px 0 9px}}p{{margin:9px 0}}.eyebrow,.label{{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}}.eyebrow{{color:var(--blue)}}.muted{{color:var(--muted)}}.verdict-grid{{display:grid;grid-template-columns:minmax(220px,.58fr) 1.95fr;gap:20px;margin-top:23px}}.verdict-box{{padding:24px;border-radius:10px;background:{_decision_background(decision)};border:1px solid {_decision_border(decision)}}}.verdict-value{{font-size:2.2rem;font-weight:900;color:{_decision_color(decision)};margin:3px 0}}.answer{{font-size:1.08rem;font-weight:850;line-height:1.35}}.abstract{{border-left:5px solid {_decision_color(decision)};padding:18px 22px;background:#fafbfd;border-radius:8px}}.abstract p{{margin:7px 0}}.cards,.summary-grid,.figure-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}}.card,.finding-panel,.method-box,.discussion-block{{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}}.value{{display:block;font-size:1.08rem;font-weight:850;margin-top:3px;overflow-wrap:anywhere}}nav{{margin-top:22px;padding-top:17px;border-top:1px solid var(--line)}}nav a{{color:var(--blue);text-decoration:none;font-weight:700;margin:4px 18px 4px 0;display:inline-block}}table{{width:100%;border-collapse:collapse;font-size:.91rem}}th,td{{padding:10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}}th{{background:#f5f8fb;color:var(--navy);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}}.badge{{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.7rem;font-weight:850;text-transform:uppercase}}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{{background:var(--soft-green);color:var(--green)}}.badge-review,.badge-warning,.badge-high,.badge-partially-comparable,.badge-plausible{{background:var(--soft-amber);color:var(--amber)}}.badge-fail,.badge-failed,.badge-critical,.badge-blocking,.badge-urgent,.badge-not-demonstrated{{background:var(--soft-red);color:var(--red)}}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-not-assessable,.badge-out-of-scope,.badge-unverified,.badge-not-testable{{background:#eef1f5;color:#566273}}.delta-review{{color:var(--red);font-weight:850}}.delta-acceptable{{color:var(--green);font-weight:850}}.delta-neutral{{color:var(--muted);font-weight:850}}.evidence-profile{{display:grid;gap:10px;margin:13px 0 4px}}.evidence-row{{display:grid;grid-template-columns:minmax(155px,.75fr) 2fr minmax(90px,.45fr);gap:13px;align-items:center}}.evidence-track{{height:9px;background:#e7ebf0;border-radius:99px;overflow:hidden}}.evidence-fill{{height:100%;border-radius:99px;background:#7c8898}}.evidence-fill.pass{{background:var(--green)}}.evidence-fill.partial,.evidence-fill.review{{background:var(--amber)}}.evidence-fill.fail,.evidence-fill.incomplete{{background:var(--red)}}.evidence-label{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.85rem;font-weight:750}}.evidence-state{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.8rem;color:var(--muted);text-align:right}}.finding{{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}}.finding h3{{margin:7px 0 12px}}.finding-grid{{display:grid;grid-template-columns:1fr 1fr;gap:11px}}.finding-wide{{grid-column:1/-1}}.stat-list{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-top:8px}}.stat-item{{padding:9px 11px;background:var(--soft);border-radius:7px}}.callout{{background:var(--soft-blue);border-left:4px solid var(--blue);padding:15px 18px;border-radius:7px}}details{{border:1px solid var(--line);border-radius:8px;padding:12px 15px;margin:10px 0;background:#fff}}summary{{cursor:pointer;font-weight:780;color:var(--navy)}}.chart{{border:1px solid var(--line);border-radius:9px;padding:12px;background:#fff;overflow-x:auto}}.chart svg{{width:100%;height:auto;min-width:520px}}.matrix-pass td.status{{background:var(--soft-green)}}.matrix-review td.status{{background:var(--soft-amber)}}.matrix-fail td.status{{background:var(--soft-red)}}.recommendation{{display:grid;grid-template-columns:40px 1fr;gap:13px;padding:16px 0;border-bottom:1px solid var(--line)}}.rank{{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font:850 .9rem Inter,ui-sans-serif,system-ui,sans-serif}}ul{{padding-left:21px}}.empty{{color:var(--muted);font-style:italic}}.footer{{text-align:center;color:var(--muted);font:normal .8rem Inter,ui-sans-serif,system-ui,sans-serif;margin-top:20px}}@media(max-width:760px){{.verdict-grid,.finding-grid,.evidence-row{{grid-template-columns:1fr}}header,.paper-section{{padding:22px}}.finding-wide{{grid-column:auto}}.evidence-state{{text-align:left}}}}@media print{{body{{background:#fff}}main{{max-width:none;padding:0}}header,.paper-section{{box-shadow:none;break-inside:avoid}}nav{{display:none}}details{{break-inside:avoid}}}}
 </style>
 </head>
 <body><main>
 <header id="top">
 <div class="eyebrow">Psynthea scientific validation</div>
 <h1>{escape(str(payload.get('experiment_name') or payload.get('experiment_id') or 'Experiment'))}</h1>
-<p class="muted">Research-facing scientific validation report · schema {_REPORT_SCHEMA_VERSION}</p>
-<div class="decision-row">
-<div class="decision-box"><span class="decision-label">Overall scientific decision</span><div class="decision-value">{escape(decision)}</div><div class="muted"><strong>{escape("Not research ready" if decision == "REVIEW" else "")}</strong></div></div>
-<div class="conclusion"><strong>Scientific conclusion.</strong><br>{escape(conclusion)}</div>
+<p class="muted">Publication-oriented equivalence report · schema {_REPORT_SCHEMA_VERSION}</p>
+<div class="verdict-grid">
+<div class="verdict-box"><span class="label">Scientific verdict</span><div class="verdict-value">{escape(decision)}</div><div class="answer">{escape(verdict)}</div><p class="muted">Evaluated scope: {escape(module_label)}</p></div>
+<div class="abstract"><span class="label">Structured abstract</span>{narrative.abstract()}</div>
 </div>
-<div class="meta">
-{_metric_card('Experiment', payload.get('experiment_id'))}
-{_metric_card('Run', payload.get('run_id'))}
-{_metric_card('Population', _mapping(payload.get('cohort')).get('population_size'))}
-{_metric_card('Seed', _mapping(payload.get('cohort')).get('seed'))}
-{_metric_card('Modules', ', '.join(str(x) for x in _sequence(_mapping(payload.get('cohort')).get('modules'))))}
-{_metric_card('Generated', payload.get('generated_at'))}
+<h3>Evidence profile</h3>{_overall_evidence(summary, validation, knowledge, root)}
+<div class="summary-grid" style="margin-top:15px">
+{_metric_card('Cohort size', cohort.get('population_size'))}
+{_metric_card('Random seed', cohort.get('seed'))}
+{_metric_card('Evaluated modules', module_label)}
+{_metric_card('FDR-significant endpoints', _mapping(summary.get('validation')).get('significant_after_fdr_count'))}
 </div>
-<nav><a href="#overview">Assessment</a><a href="#comparison">Cohorts</a><a href="#findings">Major discrepancies</a><a href="#statistics">Statistics</a><a href="#scope">Scope</a><a href="#root-cause">Root cause</a><a href="#recommendations">Recommendations</a><a href="#limitations">Limitations</a><a href="#appendix">Appendix</a></nav>
+<nav><a href="#methods">Methods</a><a href="#results">Results</a><a href="#discussion">Discussion</a><a href="#actions">Recommendations</a><a href="#appendix">Appendix</a></nav>
 </header>
-<section class="section" id="overview"><h2>1. Scientific assessment</h2>{_research_overview_v13(summary, validation, knowledge, root_cause, discrepancies)}</section>
-<section class="section" id="comparison"><h2>2. Cohort comparison</h2>{_cohort_comparison_v13(validation)}</section>
-<section class="section" id="findings"><h2>3. Major scientific discrepancies</h2>{_render_discrepancies(discrepancies)}</section>
-<section class="section" id="statistics"><h2>4. Statistical evidence</h2>{_statistical_evidence_v13(validation, discrepancies)}</section>
-<section class="section" id="scope"><h2>5. Validation scope</h2>{_validation_scope(knowledge)}</section>
-<section class="section" id="root-cause"><h2>6. Root-cause assessment</h2>{_root_cause_assessment_v13(root_cause, discrepancies)}</section>
-<section class="section" id="recommendations"><h2>7. Prioritised recommendations</h2>{_recommendations_v13(knowledge, discrepancies)}</section>
-<section class="section" id="limitations"><h2>8. Limitations and outstanding questions</h2>{_limitations_v13(knowledge, root_cause, discrepancies)}</section>
-<section class="section" id="appendix"><h2>9. Technical appendix</h2>{_technical_appendix(payload, validation, knowledge, root_cause)}</section>
-<div class="footer">Generated deterministically from persisted Validation, Knowledge and Root Cause artifacts. The reporting stage consolidates and formats evidence; it does not recalculate scientific results.</div>
+<section class="paper-section" id="methods"><h2>1. Methods</h2>{_methods_and_scope(payload, validation, knowledge)}</section>
+<section class="paper-section" id="results"><h2>2. Results</h2>{_largest_discrepancy_summary(validation, discrepancies)}<h3>Cohort-level outputs</h3>{_cohort_bar_chart(validation)}{_cohort_comparison_v13(validation)}<h3>Domain concordance</h3>{_domain_concordance_matrix(validation, discrepancies)}<h3>Principal findings</h3>{_render_discrepancies(discrepancies, narrative)}<h3>Statistical synthesis</h3>{_statistical_evidence_v13(validation, discrepancies)}</section>
+<section class="paper-section" id="discussion"><h2>3. Discussion</h2>{_discussion_sections(narrative, root, discrepancies)}{_limitations_v13(knowledge, root, discrepancies)}</section>
+<section class="paper-section" id="actions"><h2>4. Recommendations and research readiness</h2>{_recommendations_v13(knowledge, discrepancies)}{_research_readiness(decision, summary, knowledge, discrepancies)}</section>
+<section class="paper-section" id="appendix"><h2>5. Scientific appendix</h2>{_validation_scope_summary(knowledge)}{_technical_appendix(payload, validation, knowledge, root)}</section>
+<div class="footer">Generated deterministically from persisted Validation, Knowledge and Root Cause artifacts. The reporting stage formats evidence and does not recalculate scientific results.</div>
 </main></body></html>"""
 
 
-def _scientific_conclusion_v13(decision: str, discrepancies: Sequence[Mapping[str, Any]], knowledge: Mapping[str, Any]) -> str:
-    ready = any(bool(m.get("research_use_ready")) for m in _mapping_sequence(knowledge.get("modules")))
-    if decision == "PASS" and ready and not discrepancies:
-        return "The available evidence supports equivalence for the evaluated modules within the stated scope and limitations."
+def _scientific_conclusion_v13(
+    decision: str,
+    discrepancies: Sequence[Mapping[str, Any]],
+    knowledge: Mapping[str, Any],
+) -> str:
+    modules = _mapping_sequence(knowledge.get("modules"))
+    ready_count = sum(bool(module.get("research_use_ready")) for module in modules)
+
     if decision == "INCOMPLETE":
-        return "The experiment did not produce all required upstream results; no defensible equivalence conclusion can be issued."
-    labels = [str(x.get("short_label")) for x in discrepancies[:4] if x.get("short_label")]
-    suffix = ": " + ", ".join(labels) + "." if labels else "."
-    return "Scientific equivalence between Psynthea and Synthea was not demonstrated" + suffix + " The evaluated module is not suitable for downstream research until these discrepancies are resolved and the experiment is repeated."
+        return (
+            "The experiment did not produce all required upstream products; "
+            "therefore no defensible equivalence conclusion can be issued."
+        )
+    if decision == "PASS" and not discrepancies and ready_count == len(modules):
+        return (
+            "The persisted evidence supports equivalence for all evaluated modules "
+            "within the configured scope and reported limitations."
+        )
+
+    leading = [str(item.get("short_label")) for item in discrepancies[:4] if item.get("short_label")]
+    detail = ": " + "; ".join(leading) if leading else ""
+    module_word = "module" if len(modules) == 1 else "modules"
+    return (
+        "Scientific equivalence between Psynthea and Synthea was not demonstrated"
+        f"{detail}. The evaluated {module_word} should not be used for downstream "
+        "research until the blocking discrepancies are resolved and reproduced "
+        "across independent runs."
+    )
 
 
-def _research_overview_v13(summary: Mapping[str, Any], validation: Mapping[str, Any], knowledge: Mapping[str, Any], root_cause: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
-    val = _mapping(summary.get("validation")); know = _mapping(summary.get("knowledge")); root = _mapping(summary.get("root_cause"))
-    modules = _mapping_sequence(knowledge.get("modules")); ready = sum(1 for m in modules if bool(m.get("research_use_ready")))
-    major = len(discrepancies)
-    return f"""<div class="cards">
-{_metric_card('Comparison performed', f"{val.get('comparable_module_count', 0)} / {val.get('module_count', 0)}")}
-{_metric_card('Overall equivalence', 'Not demonstrated' if major else 'Supported')}
-{_metric_card('Major discrepancies', major)}
-{_metric_card('Significant after FDR', val.get('significant_after_fdr_count'))}
-{_metric_card('Research-ready modules', f"{ready} / {len(modules)}")}
-{_metric_card('Root-cause status', root.get('status') or 'unknown')}
+def _research_overview_v13(
+    summary: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    knowledge: Mapping[str, Any],
+    root_cause: Mapping[str, Any],
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    validation_summary = _mapping(summary.get("validation"))
+    root_summary = _mapping(summary.get("root_cause"))
+    modules = _mapping_sequence(knowledge.get("modules"))
+    ready = sum(bool(module.get("research_use_ready")) for module in modules)
+    supported = not discrepancies and ready == len(modules) and bool(modules)
+
+    return f'''<div class="cards">
+{_metric_card("Comparison performed", f"{validation_summary.get('comparable_module_count', 0)} / {validation_summary.get('module_count', 0)}")}
+{_metric_card("Overall equivalence", "Supported" if supported else "Not demonstrated")}
+{_metric_card("Ranked discrepancies", len(discrepancies))}
+{_metric_card("Significant after FDR", validation_summary.get("significant_after_fdr_count"))}
+{_metric_card("Research-ready modules", f"{ready} / {len(modules)}")}
+{_metric_card("Root-cause status", root_summary.get("status") or "unknown")}
 </div>
-<div class="callout"><strong>Interpretation:</strong> “Comparison performed” means that the available cohorts supported statistical analysis. It does not mean that equivalence was demonstrated. Research readiness additionally requires clinically coherent outputs and no blocking scientific findings.</div>"""
+<div class="callout"><strong>Interpretation:</strong> A completed statistical comparison is not equivalent to demonstrated scientific equivalence. The final decision also considers output completeness, effect magnitude, multiplicity-adjusted evidence, clinical interpretation and unresolved causal uncertainty.</div>'''
 
 
 def _cohort_counts(validation: Mapping[str, Any]) -> Mapping[str, Mapping[str, Any]]:
     cohorts = _mapping(validation.get("cohorts"))
-    if cohorts:
-        return {str(k): _mapping(v) for k, v in cohorts.items()}
-    source = _mapping(validation.get("source"))
-    return {str(k): _mapping(v) for k, v in _mapping(source.get("cohorts")).items()}
+    if not cohorts:
+        cohorts = _mapping(_mapping(validation.get("source")).get("cohorts"))
+    return {str(key): _mapping(value) for key, value in cohorts.items()}
+
+
+def _cohort_domains(validation: Mapping[str, Any]) -> tuple[str, ...]:
+    cohorts = _cohort_counts(validation)
+    reference = _mapping(cohorts.get("synthea"))
+    candidate = _mapping(cohorts.get("psynthea"))
+    excluded = {"source", "engine", "generator", "name"}
+    return tuple(
+        sorted(
+            key
+            for key in set(reference) | set(candidate)
+            if key not in excluded and _is_number(reference.get(key), candidate.get(key))
+        )
+    )
+
 
 
 def _cohort_comparison_v13(validation: Mapping[str, Any]) -> str:
     cohorts = _cohort_counts(validation)
     synthea = _mapping(cohorts.get("synthea"))
     psynthea = _mapping(cohorts.get("psynthea"))
-    domains = ("patients", "conditions", "encounters", "medications", "observations", "procedures")
-    rows = []
-    for domain in domains:
-        a = synthea.get(domain); b = psynthea.get(domain)
-        if a is None and b is None:
-            continue
-        delta, delta_class = _relative_difference_display(a, b)
-        if domain == "patients" and a == b:
-            status = "performed"
-        elif domain == "procedures" and _numeric_zero(a) and _numeric_zero(b):
+    rows: list[str] = []
+
+    for domain in _cohort_domains(validation):
+        reference = synthea.get(domain)
+        candidate = psynthea.get(domain)
+        delta, _ = _relative_difference_display(reference, candidate)
+        if _numeric_zero(reference) and _numeric_zero(candidate):
             status = "not informative"
+        elif reference == candidate:
+            status = "pass"
+        elif _material_count_difference(reference, candidate):
+            status = "review"
         else:
-            status = "pass" if a == b else "review"
-        rows.append(f"<tr><td>{escape(domain.title())}</td><td>{escape(_fmt(a))}</td><td>{escape(_fmt(b))}</td><td class=\"{delta_class}\">{escape(delta)}</td><td>{_badge(status)}</td></tr>")
+            status = "performed"
+        delta_class = _delta_class_for_status(status)
+        rows.append(
+            f'<tr><td>{escape(_humanize(domain))}</td>'
+            f'<td>{escape(_fmt(reference))}</td><td>{escape(_fmt(candidate))}</td>'
+            f'<td class="{delta_class}">{escape(delta)}</td><td>{_badge(status)}</td></tr>'
+        )
+
     if not rows:
-        return '<p class="empty">No cohort counts were available.</p>'
-    return '<table><thead><tr><th>Clinical output</th><th>Synthea</th><th>Psynthea</th><th>Relative difference</th><th>Screening</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table><p class="muted">Relative differences describe output volume and are not used as a standalone equivalence criterion. “N/A” is reported when both reference and candidate counts are zero. When both cohorts contain zero events, the endpoint is marked “not informative” because no comparative conclusion can be drawn.</p>'
+        return '<p class="empty">No cohort-level numeric outputs were available.</p>'
+    return (
+        '<table><thead><tr><th>Clinical output</th><th>Synthea</th><th>Psynthea</th>'
+        '<th>Relative difference</th><th>Scientific screening</th></tr></thead><tbody>'
+        + "".join(rows)
+        + '</tbody></table><p class="muted">Colour represents the scientific screening status, not the mathematical sign of the difference. A non-zero difference that remains below the configured materiality threshold is shown as acceptable/performed.</p>'
+    )
 
 
 def _relative_difference_display(reference: Any, candidate: Any) -> tuple[str, str]:
     try:
-        a = float(reference); b = float(candidate)
+        baseline = float(reference)
+        observed = float(candidate)
     except (TypeError, ValueError):
         return "N/A", ""
-    if a == 0:
-        return ("N/A", "delta-neutral") if b == 0 else ("Not estimable", "delta-positive")
-    pct = ((b - a) / a) * 100.0
-    text = f"{pct:+.1f} %"
-    return text, "delta-neutral" if abs(pct) < 1e-12 else ("delta-positive" if pct > 0 else "delta-negative")
+    if baseline == 0:
+        return ("N/A", "delta-neutral") if observed == 0 else ("Not estimable", "delta-review")
+    percentage = ((observed - baseline) / baseline) * 100.0
+    css = "delta-neutral" if abs(percentage) < 1e-12 else ("delta-review" if percentage != 0 else "delta-neutral")
+    return f"{percentage:+.1f} %", css
 
 
-def _scientific_discrepancies(validation: Mapping[str, Any], knowledge: Mapping[str, Any]) -> list[dict[str, Any]]:
+def _scientific_discrepancies(
+    validation: Mapping[str, Any],
+    knowledge: Mapping[str, Any],
+) -> list[dict[str, Any]]:
     cohorts = _cohort_counts(validation)
-    synthea = _mapping(cohorts.get("synthea"))
-    psynthea = _mapping(cohorts.get("psynthea"))
+    reference = _mapping(cohorts.get("synthea"))
+    candidate = _mapping(cohorts.get("psynthea"))
     findings = _all_knowledge_findings(knowledge)
-    result: list[dict[str, Any]] = []
-    definitions = (
-        ("observations", "Observation generation absent", "observations", "critical", "No clinical observations were produced by Psynthea."),
-        ("medications", "Medication generation absent", "medications", "critical", "No medication records were produced by Psynthea."),
-        ("encounters", "Encounter generation differs materially", "encounters", "high", "Psynthea generated substantially fewer encounters than Synthea."),
-        ("conditions", "Hypertension prevalence differs", "conditions", "high", "The principal hypertension prevalence differs materially between engines."),
-    )
-    for key, title, domain, severity, impact in definitions:
-        reference = synthea.get(domain)
-        candidate = psynthea.get(domain)
-        if not _material_count_difference(reference, candidate):
+    discrepancies: list[dict[str, Any]] = []
+
+    for domain in _cohort_domains(validation):
+        synthea_value = reference.get(domain)
+        psynthea_value = candidate.get(domain)
+        if not _material_count_difference(synthea_value, psynthea_value):
             continue
-        related = _endpoint_findings(findings, key)
-        tests = _supporting_tests_for_endpoint(key, related)
-        evidence = _scientific_evidence_summary(key, reference, candidate, related)
-        dimensions = _distinct_evidence_dimensions(key, tests, related)
-        result.append({
-            "key": key,
-            "title": title,
-            "short_label": title.lower(),
+
+        related = _related_findings(findings, domain)
+        category = _count_discrepancy_category(synthea_value, psynthea_value)
+        relative = _relative_difference(synthea_value, psynthea_value)
+        severity = _count_severity(category, relative, related)
+        score = _scientific_impact_score(
+            severity=severity,
+            blocking=_has_blocking_evidence(related),
+            relative_difference=relative,
+            adjusted_significance=_has_adjusted_significance(related),
+            evidence_count=len(related),
+        )
+        discrepancy = {
+            "key": domain,
+            "domain": domain,
+            "category": category,
+            "title": _count_title(domain, category),
+            "short_label": _count_short_label(domain, category, relative),
             "severity": severity,
-            "impact": impact,
-            "synthea": reference,
-            "psynthea": candidate,
-            "difference": _relative_difference_display(reference, candidate)[0],
-            "tests": tests,
-            "evidence": evidence,
-            "strength": _evidence_strength_v131(dimensions),
+            "blocking": category in {"missing_candidate_output", "candidate_only_output"} or _has_blocking_evidence(related),
+            "impact": _count_impact(domain, category, synthea_value, psynthea_value, relative),
+            "synthea": synthea_value,
+            "psynthea": psynthea_value,
+            "difference": _relative_difference_display(synthea_value, psynthea_value)[0],
+            "tests": _evidence_basis(related, category),
+            "evidence": _count_evidence(domain, synthea_value, psynthea_value, relative, related),
             "finding_count": len(related),
-            "evidence_dimensions": dimensions,
-        })
-    return result
+            "score": score,
+            "related_findings": related,
+        }
+        discrepancies.append(discrepancy)
 
-
-def _material_count_difference(reference: Any, candidate: Any) -> bool:
-    try:
-        a = float(reference); b = float(candidate)
-    except (TypeError, ValueError):
-        return False
-    if a == b:
-        return False
-    if a == 0:
-        return b != 0
-    return abs((b - a) / a) >= 0.10
+    discrepancies.extend(_finding_only_discrepancies(findings, existing=discrepancies))
+    discrepancies.sort(key=lambda item: (-float(item.get("score", 0.0)), _severity_rank(item.get("severity")), str(item.get("title"))))
+    return discrepancies[:8]
 
 
 def _all_knowledge_findings(knowledge: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    out: list[Mapping[str, Any]] = []
+    values: list[Mapping[str, Any]] = []
     for module in _mapping_sequence(knowledge.get("modules")):
         report = _mapping(module.get("interpretation_report"))
-        out.extend(_mapping_sequence(report.get("findings")))
-        out.extend(_mapping_sequence(_mapping(module.get("summary")).get("priority_findings")))
+        values.extend(_mapping_sequence(report.get("findings")))
+        values.extend(_mapping_sequence(_mapping(module.get("summary")).get("priority_findings")))
     unique: list[Mapping[str, Any]] = []
     seen: set[str] = set()
-    for item in out:
-        identity = str(item.get("finding_id") or item.get("id") or (item.get("title"), item.get("observation")))
+    for item in values:
+        identity = str(item.get("finding_id") or item.get("id") or item.get("rule_id") or json.dumps(_plain_value(item), sort_keys=True))
         if identity not in seen:
             seen.add(identity)
             unique.append(item)
@@ -665,500 +1079,1327 @@ def _all_knowledge_findings(knowledge: Mapping[str, Any]) -> list[Mapping[str, A
 
 
 def _finding_text(finding: Mapping[str, Any]) -> str:
-    return " ".join(str(finding.get(k) or "") for k in ("title", "finding_id", "observation", "interpretation", "impact", "rule_id", "evidence_ids")).lower()
+    return " ".join(str(value) for value in _flatten_scalars(finding)).casefold()
 
 
-def _endpoint_findings(findings: Sequence[Mapping[str, Any]], endpoint: str) -> list[Mapping[str, Any]]:
-    structured_tokens = {
-        "observations": {"observations", "observation", "observations_per_patient"},
-        "medications": {"medications", "medication", "medications_per_patient"},
-        "encounters": {"encounters", "encounter", "encounters_per_patient"},
-        "conditions": {"conditions", "condition", "59621000", "conditions.59621000"},
-    }[endpoint]
-    text_aliases = {
-        "observations": ("observations_per_patient", "observation generation", "observation table"),
-        "medications": ("medications_per_patient", "medication generation", "medication table"),
-        "encounters": ("encounters_per_patient", "encounter generation", "encounter volume"),
-        "conditions": ("conditions.59621000", "hypertension prevalence", "prevalence endpoint"),
-    }[endpoint]
-
-    matched: list[Mapping[str, Any]] = []
-    for finding in findings:
-        structured = " ".join(
-            str(finding.get(key) or "")
-            for key in (
-                "endpoint",
-                "endpoint_id",
-                "metric",
-                "metric_id",
-                "domain",
-                "code",
-                "rule_id",
-                "evidence_ids",
-            )
-        ).casefold()
-        structured_parts = {
-            token.strip(" ,;:[](){}\"'").casefold()
-            for token in structured.replace("/", " ").split()
-            if token.strip()
-        }
-        if any(token.casefold() in structured_parts for token in structured_tokens):
-            matched.append(finding)
-            continue
-
-        text = _finding_text(finding)
-        if any(alias in text for alias in text_aliases):
-            matched.append(finding)
-
-    return matched
+def _related_findings(findings: Sequence[Mapping[str, Any]], domain: str) -> list[Mapping[str, Any]]:
+    tokens = {domain.casefold(), domain.rstrip("s").casefold(), f"{domain}_per_patient".casefold()}
+    return [finding for finding in findings if any(token and token in _finding_text(finding) for token in tokens)]
 
 
-def _supporting_tests_for_endpoint(
-    endpoint: str,
+def _finding_only_discrepancies(
     findings: Sequence[Mapping[str, Any]],
-) -> list[str]:
-    text = " ".join(_finding_text(item) for item in findings)
-    evidence: list[str] = []
-
-    if endpoint in {"observations", "medications"}:
-        evidence.append("Functional output-retention assessment")
-        if any(token in text for token in ("kolmogorov", "mann", "welch")):
-            evidence.append("Complementary distribution, location and mean comparisons")
-    elif endpoint == "encounters":
-        evidence.append("Cohort-level encounter-volume comparison")
-        if any(token in text for token in ("kolmogorov", "mann", "welch")):
-            evidence.append("Complementary distribution, location and mean comparisons")
-    else:
-        evidence.append("Prevalence comparison")
-        if "risk_ratio" in text:
-            evidence.append("Risk-ratio effect estimate")
-        if any(token in text for token in ("adjusted_p", "fdr")):
-            evidence.append("Multiplicity-adjusted inference")
-        if any(token in text for token in ("confidence", "95% ci", "95 % ci")):
-            evidence.append("95 % confidence interval")
-
-    return list(dict.fromkeys(evidence))
-
-
-def _scientific_evidence_summary(endpoint: str, reference: Any, candidate: Any, findings: Sequence[Mapping[str, Any]]) -> str:
-    if endpoint in {"observations", "medications"}:
-        label = "observation" if endpoint == "observations" else "medication"
-        return f"Synthea generated {_fmt(reference)} {label} records, whereas Psynthea generated none. Both output tables were present, but the Psynthea {label} table was empty."
-    if endpoint == "encounters":
-        delta, _ = _relative_difference_display(reference, candidate)
-        evidence = _encounter_statistical_evidence(findings)
-        return (f"Synthea generated {_fmt(reference)} encounters and Psynthea {_fmt(candidate)} ({delta}). " + evidence).strip()
-    prevalence = _prevalence_evidence(findings)
-    if prevalence:
-        return prevalence
-    delta, _ = _relative_difference_display(reference, candidate)
-    return f"Synthea prevalence: {_percent_from_count(reference)}; Psynthea prevalence: {_percent_from_count(candidate)}; relative difference: {delta}."
-
-
-def _best_matching_observation(findings: Sequence[Mapping[str, Any]], tokens: Sequence[str]) -> str:
-    observations = [str(finding.get("observation")) for finding in findings if finding.get("observation") and any(token in _finding_text(finding) for token in tokens)]
-    observations.sort(key=len, reverse=True)
-    return observations[0] if observations else ""
-
-
-def _encounter_statistical_evidence(findings: Sequence[Mapping[str, Any]]) -> str:
-    import re
-
-    text = " ".join(
-        str(finding.get("observation") or "")
-        for finding in findings
-        if any(
-            token in _finding_text(finding)
-            for token in ("welch", "encounters_per_patient")
+    *,
+    existing: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    existing_text = " ".join(str(item.get("domain") or item.get("key") or "") for item in existing).casefold()
+    output: list[dict[str, Any]] = []
+    for finding in findings:
+        severity = str(finding.get("severity") or "").casefold()
+        status = str(finding.get("status") or "").casefold()
+        text = _finding_text(finding)
+        if severity not in {"critical", "high"} and status not in {"fail", "failed", "blocking"}:
+            continue
+        if any(token in existing_text for token in _extract_domain_tokens(finding)):
+            continue
+        title = str(finding.get("title") or finding.get("observation") or finding.get("rule_id") or "Knowledge-layer discrepancy")
+        if len(title) > 140:
+            title = title[:137].rstrip() + "..."
+        score = _scientific_impact_score(
+            severity=severity or "high",
+            blocking=_finding_is_blocking(finding),
+            relative_difference=None,
+            adjusted_significance=_has_adjusted_significance((finding,)),
+            evidence_count=1,
         )
+        output.append({
+            "key": str(finding.get("finding_id") or finding.get("id") or title),
+            "domain": _first_domain_token(finding),
+            "category": "knowledge_finding",
+            "title": title,
+            "short_label": title.lower(),
+            "severity": severity if severity in {"critical", "high", "medium", "low"} else "high",
+            "blocking": _finding_is_blocking(finding),
+            "impact": str(finding.get("impact") or finding.get("interpretation") or "The Knowledge Engine classified this finding as scientifically material."),
+            "synthea": None,
+            "psynthea": None,
+            "difference": "N/A",
+            "tests": _evidence_basis((finding,), "knowledge_finding"),
+            "evidence": str(finding.get("observation") or finding.get("interpretation") or "Persisted Knowledge Engine evidence."),
+            "finding_count": 1,
+            "score": score,
+            "related_findings": [finding],
+        })
+    return output
+
+
+
+
+def _render_discrepancies(
+    discrepancies: Sequence[Mapping[str, Any]],
+    narrative: ScientificNarrativeFormatter | None = None,
+) -> str:
+    if not discrepancies:
+        return '<p class="empty">No scientifically material discrepancy was identified.</p>'
+    if narrative is None:
+        narrative = ScientificNarrativeFormatter(
+            decision="REVIEW",
+            module_label="the evaluated scope",
+            knowledge={},
+            root_cause={},
+            discrepancies=discrepancies,
+        )
+    visible = discrepancies[:5]
+    hidden = discrepancies[5:]
+    rendered = "".join(
+        _finding_card(item, narrative=narrative) for item in visible
     )
-    if not text:
-        return ""
-
-    p_match = re.search(
-        r"(?:adjusted_)?p(?:_value)?\s*[=:]\s*([0-9.eE+-]+)",
-        text,
-        flags=re.IGNORECASE,
-    )
-    effect_match = re.search(
-        r"effect(?:_size)?\s*[=:]\s*([0-9.eE+-]+)",
-        text,
-        flags=re.IGNORECASE,
-    )
-    n_s_match = re.search(r"n_synthea\s*[=:]\s*(\d+)", text, flags=re.IGNORECASE)
-    n_p_match = re.search(r"n_psynthea\s*[=:]\s*(\d+)", text, flags=re.IGNORECASE)
-
-    statements: list[str] = []
-    if effect_match:
-        effect = float(effect_match.group(1))
-        magnitude = abs(effect)
-        label = (
-            "large"
-            if magnitude >= 0.8
-            else "moderate"
-            if magnitude >= 0.5
-            else "small"
-            if magnitude >= 0.2
-            else "negligible"
+    if hidden:
+        rendered += (
+            f'<details><summary>Additional scientific findings ({len(hidden)})</summary>'
+            + "".join(
+                _finding_card(item, narrative=narrative, compact=True)
+                for item in hidden
+            )
+            + '</details>'
         )
-        statements.append(
-            "Standardized effect-size estimate reported by the Validation "
-            f"Engine: {effect:.2f} ({label}); the persisted evidence does not "
-            "identify the specific effect-size metric."
-        )
-    if p_match:
-        statements.append(f"p-value: {_format_p_value(float(p_match.group(1)))}.")
-    if n_s_match and n_p_match:
-        statements.append(
-            f"Cohort size: {_fmt(int(n_s_match.group(1)))} Synthea and "
-            f"{_fmt(int(n_p_match.group(1)))} Psynthea patients."
-        )
-
-    return " ".join(statements) if statements else _best_matching_observation(
-        findings,
-        ("welch", "encounters_per_patient"),
+    return (
+        rendered
+        + '<p class="muted">Findings are ordered by scientific priority. '
+        'Internal ranking scores remain available only in the machine-readable report.</p>'
     )
 
 
-def _prevalence_evidence(findings: Sequence[Mapping[str, Any]]) -> str:
-    import re
-    text = " ".join(str(f.get("observation") or "") for f in findings)
-    patterns = {
-        "sp": r"Synthea prevalence=([0-9.eE+-]+)", "pp": r"psynthea prevalence=([0-9.eE+-]+)",
-        "ad": r"absolute_difference=([0-9.eE+-]+)", "rd": r"relative_difference=([0-9.eE+-]+)",
-        "rr": r"risk_ratio=([0-9.eE+-]+)", "lo": r"95% CI=\[([0-9.eE+-]+)",
-        "hi": r"95% CI=\[[0-9.eE+-]+, ([0-9.eE+-]+)\]", "p": r"adjusted_p=([0-9.eE+-]+)",
+def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
+    aggregate = _mapping(validation.get("aggregate"))
+    rows = []
+    for module in _mapping_sequence(validation.get("modules")):
+        stats = _mapping(module.get("statistical_summary"))
+        rows.append(
+            f'<tr><td>{escape(_fmt(module.get("module_name")))}</td>'
+            f'<td>{_badge(stats.get("validation_status"))}</td>'
+            f'<td>{escape(_fmt(stats.get("significant_test_count")))}</td>'
+            f'<td>{escape(_fmt(stats.get("significant_after_fdr_count")))}</td>'
+            f'<td>{_badge("performed" if stats.get("valid_for_statistical_comparison") else "incomplete")}</td></tr>'
+        )
+    forest = _forest_plot(discrepancies)
+    return (
+        '<div class="cards">'
+        + _metric_card("Modules tested", aggregate.get("module_count"))
+        + _metric_card("Nominally significant", aggregate.get("significant_test_count"))
+        + _metric_card("Significant after FDR", aggregate.get("significant_after_fdr_count"))
+        + _metric_card("Warnings", aggregate.get("warning_count"))
+        + '</div>'
+        + ('<table><thead><tr><th>Module</th><th>Statistical status</th><th>Nominal</th><th>After FDR</th><th>Comparison</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table>' if rows else '<p class="empty">No module-level statistical summary was available.</p>')
+        + forest
+        + '<div class="callout"><strong>Interpretation.</strong> Statistical significance alone does not establish equivalence. Functional completeness, effect magnitude, clinical concordance and multiplicity-adjusted evidence are considered together.</div>'
+    )
+
+
+def _validation_scope(knowledge: Mapping[str, Any]) -> str:
+    identifiers = _collect_validation_identifiers(knowledge)
+    grouped: dict[str, list[str]] = {}
+    for identifier in identifiers:
+        grouped.setdefault(identifier.split(".", 1)[0], []).append(identifier)
+    labels = {
+        "ACTION": "Actionability checks", "CLINICAL": "Clinical checks",
+        "EPI": "Epidemiological checks", "SPANISH": "Spanish-context checks",
+        "STAT": "Statistical checks", "STRUCT": "Structural checks",
     }
-    values: dict[str, float] = {}
-    for key, pattern in patterns.items():
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if match:
-            try: values[key] = float(match.group(1))
-            except ValueError: pass
-    if not {"sp", "pp", "rr", "lo", "hi", "p"}.issubset(values):
-        return ""
-    absolute = values.get("ad", values["pp"] - values["sp"])
-    relative = values.get("rd", (values["pp"] - values["sp"]) / values["sp"] if values["sp"] else 0.0)
-    return (f"Synthea prevalence: {values['sp'] * 100:.1f} %; Psynthea prevalence: {values['pp'] * 100:.1f} %; "
-            f"absolute difference: {absolute * 100:+.1f} percentage points; relative difference: {relative * 100:+.1f} %; "
-            f"risk ratio: {values['rr']:.2f}; 95 % CI: {values['lo']:.2f}–{values['hi']:.2f}; FDR-adjusted p-value: {_format_p_value(values['p'])}.")
+    summary = ''.join(
+        f'<div class="card"><span class="label">{escape(labels.get(prefix, prefix))}</span><span class="value">{len(values)} evaluated</span></div>'
+        for prefix, values in sorted(grouped.items())
+    )
+    details = ''.join(
+        f'<details><summary>{escape(labels.get(prefix, prefix))}: rule identifiers</summary>{_html_list(sorted(values), "")}</details>'
+        for prefix, values in sorted(grouped.items())
+    )
+    return ('<h3>Validation-rule coverage</h3><div class="cards">' + summary + '</div>' + details) if grouped else '<p class="empty">No structured validation-rule identifiers were persisted.</p>'
+
+def _collect_validation_identifiers(value: Any) -> set[str]:
+    allowed_prefixes = {"ACTION", "CLINICAL", "EPI", "SPANISH", "STAT", "STRUCT"}
+    pattern = re.compile(
+        r"^(ACTION|CLINICAL|EPI|SPANISH|STAT|STRUCT)\."
+        r"[A-Z0-9_]+(?:\.[A-Z0-9_]+)*$"
+    )
+    identifiers: set[str] = set()
+
+    def visit(item: Any) -> None:
+        if isinstance(item, Mapping):
+            for key, child in item.items():
+                if isinstance(child, str) and str(key).casefold() in {
+                    "rule_id", "action_id", "rule", "validation_rule_id"
+                }:
+                    candidate = child.strip()
+                    if candidate.split(".", 1)[0] in allowed_prefixes and pattern.fullmatch(candidate):
+                        identifiers.add(candidate)
+                visit(child)
+        elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            for child in item:
+                visit(child)
+
+    visit(value)
+    return identifiers
 
 
-def _percent_from_count(value: Any) -> str:
-    try: return f"{float(value):.1f} %"
-    except (TypeError, ValueError): return _fmt(value)
+
+
+def _root_cause_assessment_v13(
+    root: Mapping[str, Any],
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    del discrepancies
+    conclusion = _mapping(root.get("conclusion"))
+    counts = _mapping(root.get("counts"))
+    candidates = _mapping_sequence(root.get("candidates"))
+    findings = _mapping_sequence(root.get("findings"))
+    support: dict[str, int] = {}
+    selected_ids: list[str] = []
+    for finding in findings:
+        for candidate_id in _sequence(
+            finding.get("selected_candidate_ids")
+        ):
+            key = str(candidate_id)
+            support[key] = support.get(key, 0) + 1
+            selected_ids.append(key)
+    by_id = {
+        str(candidate.get("id") or candidate.get("candidate_id")): candidate
+        for candidate in candidates
+    }
+    selected = [
+        by_id[candidate_id]
+        for candidate_id in dict.fromkeys(selected_ids)
+        if candidate_id in by_id
+    ]
+    if not selected:
+        selected = sorted(
+            candidates,
+            key=lambda candidate: -_candidate_score(candidate),
+        )[:1]
+
+    verification_count = _integer(counts.get("verifications"))
+    if selected:
+        leading = selected[0]
+        label = _causal_hypothesis_sentence(leading)
+        supporting = support.get(
+            str(leading.get("id") or leading.get("candidate_id")),
+            0,
+        )
+        evidence = (
+            f"The persisted root-cause artifact links {supporting} supporting "
+            "finding(s) to this hypothesis."
+            if supporting
+            else (
+                "The persisted evidence is currently insufficient to support "
+                "this hypothesis."
+            )
+        )
+    else:
+        label = "No defensible leading causal hypothesis was retained."
+        evidence = (
+            "The root-cause artifact did not retain a research-facing "
+            "hypothesis supported by the available evidence."
+        )
+
+    status = str(conclusion.get("status") or "unknown").replace("_", " ")
+    confidence = str(
+        conclusion.get("confidence") or "not established"
+    ).replace("_", " ")
+    verification = (
+        f"{verification_count} deterministic verification(s) were reported."
+        if verification_count
+        else "Deterministic verification has not yet been performed."
+    )
+    return (
+        '<h3>Causal interpretation</h3>'
+        '<div class="discussion-block">'
+        '<span class="label">Leading hypothesis</span>'
+        f'<p>{escape(label)}</p>'
+        '<span class="label">Evidence supporting this hypothesis</span>'
+        f'<p>{escape(evidence)}</p>'
+        '<span class="label">Current confidence</span>'
+        f'<p>{escape(confidence.capitalize())}; causal status: '
+        f'{escape(status)}.</p>'
+        '<span class="label">Required verification</span>'
+        f'<p>{escape(verification)} Patient-level traces and controlled '
+        'counterfactual reruns are required before causal attribution.</p>'
+        '</div>'
+    )
+
+
+def _recommendations_v13(knowledge: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
+    items=[]; seen=set()
+    for discrepancy in discrepancies:
+        title, action = _recommendation_for_discrepancy(discrepancy)
+        domain = _humanize(str(discrepancy.get("domain") or discrepancy.get("key") or "endpoint"))
+        key = re.sub(r"[^a-z0-9]+", " ", domain.casefold()).strip()
+        if key in seen: continue
+        seen.add(key)
+        mechanism = _likely_mechanism(discrepancy)
+        criterion = _verification_for_discrepancy(discrepancy)
+        items.append((title, mechanism, action, criterion, discrepancy))
+        if len(items) == 6: break
+    rendered=''.join(
+        f'<div class="recommendation"><div class="rank">{i}</div><div>{_badge("urgent" if str(d.get("severity"))=="critical" else "high")} '
+        f'{_badge("blocking" if d.get("blocking") else "review")}<h3>{escape(title)}</h3>'
+        f'<p><strong>Problem.</strong> {escape(_research_implication(d))}</p>'
+        f'<p><strong>Likely mechanism.</strong> {escape(mechanism)}</p>'
+        f'<p><strong>Required action.</strong> {escape(action)}</p>'
+        f'<p><strong>Success criterion.</strong> {escape(criterion)}</p></div></div>'
+        for i,(title,mechanism,action,criterion,d) in enumerate(items,1)
+    )
+    return rendered or '<p class="empty">No prioritised remediation was required.</p>'
+
+
+def _limitations_v13(knowledge: Mapping[str, Any], root: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
+    limitations=["This report reflects one configured execution; generalisation requires replication across independent seeds, cohort sizes and reference dates."]
+    missing=[_humanize(str(x.get("domain"))) for x in discrepancies if x.get("category")=="missing_candidate_output"]
+    if missing: limitations.append("Psynthea produced no output for " + ", ".join(missing) + "; distributional equivalence cannot be assessed for these domains.")
+    if str(_mapping(root.get("conclusion")).get("status") or "").casefold() != "confirmed": limitations.append("No deterministic causal mechanism was confirmed for the observed discrepancies.")
+    for raw in _sequence(root.get("limitations")):
+        translated=_research_facing_limitation(str(raw))
+        if translated and translated not in limitations: limitations.append(translated)
+    questions=[]
+    for item in discrepancies[:6]:
+        q=_question_for_discrepancy(item)
+        if q not in questions: questions.append(q)
+    return '<h3>Limitations</h3>'+_html_list(limitations,"No material limitation was identified.")+'<h3>Outstanding research questions</h3>'+_html_list(questions,"No outstanding scientific question was identified.")
+
+def _material_count_difference(reference: Any, candidate: Any) -> bool:
+    try:
+        baseline = float(reference)
+        observed = float(candidate)
+    except (TypeError, ValueError):
+        return False
+    if baseline == observed:
+        return False
+    if baseline == 0:
+        return observed != 0
+    return abs((observed - baseline) / baseline) >= 0.10
+
+
+def _relative_difference(reference: Any, candidate: Any) -> float | None:
+    try:
+        baseline = float(reference)
+        observed = float(candidate)
+    except (TypeError, ValueError):
+        return None
+    if baseline == 0:
+        return None
+    return (observed - baseline) / baseline
+
+
+def _count_discrepancy_category(reference: Any, candidate: Any) -> str:
+    if not _numeric_zero(reference) and _numeric_zero(candidate):
+        return "missing_candidate_output"
+    if _numeric_zero(reference) and not _numeric_zero(candidate):
+        return "candidate_only_output"
+    return "volume_difference"
+
+
+def _count_severity(category: str, relative: float | None, findings: Sequence[Mapping[str, Any]]) -> str:
+    if category in {"missing_candidate_output", "candidate_only_output"}:
+        return "critical"
+    if _has_blocking_evidence(findings) or (relative is not None and abs(relative) >= 0.50):
+        return "high"
+    return "medium"
+
+
+def _scientific_impact_score(*, severity: str, blocking: bool, relative_difference: float | None, adjusted_significance: bool, evidence_count: int) -> float:
+    score = {"critical": 50.0, "high": 35.0, "medium": 20.0, "low": 10.0}.get(severity, 5.0)
+    if blocking:
+        score += 20.0
+    if relative_difference is not None:
+        score += min(abs(relative_difference) * 20.0, 20.0)
+    if adjusted_significance:
+        score += 15.0
+    score += min(evidence_count, 5) * 2.0
+    return round(score, 2)
+
+
+def _count_title(domain: str, category: str) -> str:
+    label = _humanize(domain)
+    if category == "missing_candidate_output":
+        return f"{label} output absent in Psynthea"
+    if category == "candidate_only_output":
+        return f"{label} output present only in Psynthea"
+    return f"{label} volume differs materially"
+
+
+def _count_short_label(domain: str, category: str, relative: float | None) -> str:
+    if category == "missing_candidate_output":
+        return f"{_humanize(domain).lower()} absent"
+    if category == "candidate_only_output":
+        return f"candidate-only {_humanize(domain).lower()}"
+    direction = "higher" if (relative or 0.0) > 0 else "lower"
+    return f"{_humanize(domain).lower()} {direction} in Psynthea"
+
+
+def _count_impact(domain: str, category: str, reference: Any, candidate: Any, relative: float | None) -> str:
+    label = _humanize(domain).lower()
+    if category == "missing_candidate_output":
+        return f"Psynthea emitted no {label} records although Synthea emitted {_fmt(reference)}."
+    if category == "candidate_only_output":
+        return f"Psynthea emitted {_fmt(candidate)} {label} records while Synthea emitted none."
+    direction = "more" if (relative or 0.0) > 0 else "fewer"
+    return f"Psynthea emitted materially {direction} {label} records than Synthea."
+
+
+def _count_evidence(domain: str, reference: Any, candidate: Any, relative: float | None, findings: Sequence[Mapping[str, Any]]) -> str:
+    delta = _relative_difference_display(reference, candidate)[0]
+    base = f"Synthea generated {_fmt(reference)} {_humanize(domain).lower()} records and Psynthea generated {_fmt(candidate)} ({delta})."
+    statistical = _statistical_summary_from_findings(findings)
+    return base + (" " + statistical if statistical != "No endpoint-specific statistical record was extracted." else "")
+
+
+def _statistical_summary_from_findings(findings: Sequence[Mapping[str, Any]]) -> str:
+    test_names: list[str] = []
+    p_values: list[float] = []
+    adjusted_values: list[float] = []
+    effect_labels: list[str] = []
+    for finding in findings:
+        for key, value in _walk_items(finding):
+            normalized = key.casefold()
+            if normalized in {"test_name", "test"} and value:
+                test_names.append(str(value))
+            elif normalized in {"p_value", "p-value"}:
+                number = _to_float(value)
+                if number is not None:
+                    p_values.append(number)
+            elif normalized in {"adjusted_p_value", "adjusted_p", "fdr_p_value"}:
+                number = _to_float(value)
+                if number is not None:
+                    adjusted_values.append(number)
+            elif normalized in {"effect_size", "statistic", "risk_ratio", "odds_ratio", "jensen_shannon_divergence"}:
+                number = _to_float(value)
+                if number is not None:
+                    effect_labels.append(f"{_humanize(normalized)}={number:.3g}")
+    parts: list[str] = []
+    if test_names:
+        parts.append("Tests: " + ", ".join(dict.fromkeys(test_names)) + ".")
+    if adjusted_values:
+        parts.append(f"Minimum FDR-adjusted p-value: {_format_p_value(min(adjusted_values))}.")
+    elif p_values:
+        parts.append(f"Minimum nominal p-value: {_format_p_value(min(p_values))}.")
+    if effect_labels:
+        parts.append("Reported estimates: " + ", ".join(dict.fromkeys(effect_labels[:4])) + ".")
+    return " ".join(parts) if parts else "No endpoint-specific statistical record was extracted."
+
+
+def _evidence_basis(findings: Sequence[Mapping[str, Any]], category: str) -> list[str]:
+    values = ["Cohort-level output comparison"]
+    text = " ".join(_finding_text(item) for item in findings)
+    if category in {"missing_candidate_output", "candidate_only_output"}:
+        values.append("Functional output-retention assessment")
+    if any(token in text for token in ("fdr", "adjusted_p", "adjusted p")):
+        values.append("Multiplicity-adjusted inference")
+    if any(token in text for token in ("confidence", "ci_lower", "ci_upper", "95 %")):
+        values.append("Confidence interval")
+    if any(token in text for token in ("kolmogorov", "mann_whitney", "welch", "chi_square", "jensen_shannon")):
+        values.append("Named statistical comparison")
+    return list(dict.fromkeys(values))
+
+
+def _has_blocking_evidence(findings: Sequence[Mapping[str, Any]]) -> bool:
+    return any(_finding_is_blocking(finding) for finding in findings)
+
+
+def _finding_is_blocking(finding: Mapping[str, Any]) -> bool:
+    if bool(finding.get("blocking")) or bool(finding.get("blocking_issue")):
+        return True
+    return any(token in _finding_text(finding) for token in ("blocking", "critical", "research_use_ready=false"))
+
+
+def _has_adjusted_significance(findings: Sequence[Mapping[str, Any]]) -> bool:
+    text = " ".join(_finding_text(finding) for finding in findings)
+    return any(token in text for token in ("significant_after_fdr", "fdr-adjusted", "adjusted_p", "adjusted p"))
+
+
+
+def _recommendation_for_discrepancy(item: Mapping[str, Any]) -> tuple[str, str]:
+    domain = _humanize(str(item.get("domain") or item.get("key") or "endpoint"))
+    category = str(item.get("category") or "")
+    title_text = str(item.get("title") or "")
+    quoted = re.search(r"['\"]([a-zA-Z][a-zA-Z0-9_-]{2,})['\"]", title_text)
+    if quoted and domain.casefold() in {"clinical endpoint", "clinical", "knowledge"}:
+        domain = _humanize(quoted.group(1))
+    if category == "missing_candidate_output":
+        return (f"Restore {domain} output generation", f"Trace the state transitions, record constructors, export mapping and retention filters responsible for {domain.lower()} emission in Psynthea, then compare emitted records with the same Synthea execution.")
+    if category == "candidate_only_output":
+        return (f"Audit candidate-only {domain} output", f"Determine why Psynthea emits {domain.lower()} records absent from the reference run and verify whether the difference reflects transition semantics, defaults or exporter behaviour.")
+    if category == "knowledge_finding":
+        return (f"Resolve {domain} scientific discrepancy", f"Review the persisted clinical finding, its source evidence and the corresponding generation or mapping logic before repeating validation.")
+    return (f"Review {domain} generation semantics", f"Inspect the module transitions, lifecycle rules, denominators and exporter behaviour controlling {domain.lower()}, prioritising the evidence linked in this report.")
+
+
+def _verification_for_discrepancy(item: Mapping[str, Any]) -> str:
+    domain = _humanize(str(item.get("domain") or item.get("key") or "endpoint")).lower()
+    return f"Repeat the identical seeded cohort after the fix, inspect patient-level {domain} traces, then replicate across independent seeds and confirm that the endpoint meets the approved equivalence tolerance."
+
+
+
+def _question_for_discrepancy(item: Mapping[str, Any]) -> str:
+    domain = _humanize(str(item.get("domain") or item.get("key") or "endpoint"))
+    title_text = str(item.get("title") or "")
+    quoted = re.search(r"['\"]([a-zA-Z][a-zA-Z0-9_-]{2,})['\"]", title_text)
+    if quoted and domain.casefold() in {"clinical endpoint", "clinical", "knowledge"}:
+        domain = _humanize(quoted.group(1))
+    category = str(item.get("category") or "")
+    if category == "missing_candidate_output":
+        return f"Which Psynthea transition, record-construction or export step prevents {domain.lower()} records from being emitted?"
+    if category == "candidate_only_output":
+        return f"Which Psynthea default or transition creates {domain.lower()} records that do not appear in the reference run?"
+    if category == "knowledge_finding":
+        return f"Which generation, coding or mapping difference explains the {domain.lower()} scientific discrepancy?"
+    return f"Which module, lifecycle, denominator or exporter difference explains the material {domain.lower()} divergence?"
+
+
+def _candidate_score(candidate: Mapping[str, Any]) -> float:
+    for key in ("score", "ranking_score", "confidence_score", "probability"):
+        value = _to_float(candidate.get(key))
+        if value is not None:
+            return value
+    return 0.0
+
+
+
+def _extract_domain_tokens(finding: Mapping[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for key in ("domain", "metric", "endpoint", "endpoint_id"):
+        value = finding.get(key)
+        if value:
+            tokens.add(str(value).casefold())
+    text = _finding_text(finding)
+    for quoted in re.findall(r"['\"]([a-zA-Z][a-zA-Z0-9_-]{2,})['\"]", text):
+        tokens.add(quoted.casefold())
+    return tokens
+
+
+
+def _first_domain_token(finding: Mapping[str, Any]) -> str:
+    tokens = _extract_domain_tokens(finding)
+    excluded = {"clinical", "knowledge", "endpoint", "module", "population"}
+    usable = sorted(token for token in tokens if token not in excluded)
+    return usable[0] if usable else "clinical endpoint"
+
+
+def _flatten_scalars(value: Any) -> list[Any]:
+    output: list[Any] = []
+    if isinstance(value, Mapping):
+        for child in value.values():
+            output.extend(_flatten_scalars(child))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for child in value:
+            output.extend(_flatten_scalars(child))
+    elif value is not None:
+        output.append(value)
+    return output
+
+
+def _walk_items(value: Any, prefix: str = "") -> list[tuple[str, Any]]:
+    output: list[tuple[str, Any]] = []
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            output.append((str(key), child))
+            output.extend(_walk_items(child, f"{prefix}.{key}" if prefix else str(key)))
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        for child in value:
+            output.extend(_walk_items(child, prefix))
+    return output
+
+
+def _is_number(*values: Any) -> bool:
+    return any(_to_float(value) is not None for value in values)
+
+
+def _to_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _humanize(value: str) -> str:
+    return value.replace("_", " ").replace("-", " ").strip().title()
 
 
 def _format_p_value(value: float) -> str:
     return f"{value:.3f}" if value >= 0.001 else f"{value:.2e}"
 
 
-def _distinct_evidence_dimensions(endpoint: str, tests: Sequence[str], findings: Sequence[Mapping[str, Any]]) -> int:
-    dimensions = 1
-    if tests: dimensions += 1
-    text = " ".join(_finding_text(item) for item in findings)
-    if any(token in text for token in ("retention", "table empty", "table_empty", "clinical event volume")): dimensions += 1
-    if endpoint == "conditions" and any(token in text for token in ("risk_ratio", "confidence", "95% ci")): dimensions += 1
-    return min(dimensions, 4)
 
 
-def _evidence_strength_v131(dimensions: int) -> str:
-    return "Strong" if dimensions >= 3 else ("Moderate" if dimensions == 2 else "Preliminary")
+def _delta_class_for_status(status: str) -> str:
+    normalized = status.casefold().replace("_", " ")
+    if normalized in {"pass", "performed", "ready", "supported"}:
+        return "delta-acceptable"
+    if normalized in {"review", "fail", "failed", "blocking", "not demonstrated"}:
+        return "delta-review"
+    return "delta-neutral"
 
 
-def _render_discrepancies(
-    discrepancies: Sequence[Mapping[str, Any]],
-) -> str:
-    if not discrepancies:
-        return '<p class="empty">No major clinically material discrepancy was identified.</p>'
-
-    blocks: list[str] = []
-    for item in discrepancies:
-        evidence_basis = _html_list(
-            item.get("tests") or (),
-            "No supporting evidence category was extracted.",
-        )
-        blocks.append(
-            f'<article class="discrepancy"><div>{_badge(item.get("severity"))} '
-            f'{_badge("blocking")}</div><h3>{escape(str(item.get("title")))}</h3>'
-            f'<p>{escape(str(item.get("impact")))}</p><div class="discrepancy-grid">'
-            f'<div class="mini"><span class="label">Cohort evidence</span>'
-            f'Synthea: <strong>{escape(_fmt(item.get("synthea")))}</strong><br>'
-            f'Psynthea: <strong>{escape(_fmt(item.get("psynthea")))}</strong><br>'
-            f'Difference: <strong>{escape(str(item.get("difference")))}</strong></div>'
-            f'<div class="mini"><span class="label">Scientific evidence</span>'
-            f'{escape(str(item.get("evidence")))}</div>'
-            f'<div class="mini"><span class="label">Evidence basis</span>{evidence_basis}</div>'
-            f'<div class="mini"><span class="label">Interpretation status</span>'
-            f'{_badge("supported discrepancy")}<br><span class="muted">'
-            f'{escape(str(item.get("finding_count")))} supporting engine finding(s); '
-            'counts may share underlying evidence.</span></div></div></article>'
-        )
-
-    return (
-        "".join(blocks)
-        + '<div class="callout"><strong>Evidence-count caution:</strong> '
-        'Supporting engine findings can share underlying evidence and must not '
-        'be interpreted as independent replications.</div>'
-        '<p class="muted"><strong>Severity definitions:</strong> Critical indicates '
-        'complete absence of output in a clinically relevant domain where Synthea '
-        'produced events. High indicates generated output with a material and '
-        'statistically supported discordance.</p>'
-    )
-
-
-def _endpoint_statistical_summary(item: Mapping[str, Any]) -> str:
-    key = str(item.get("key") or "")
-    evidence = str(item.get("evidence") or "")
-
-    if key in {"observations", "medications"}:
-        return "Not estimable: Psynthea generated no events for this endpoint."
-    if key == "encounters":
-        marker = "Standardized effect-size estimate"
-        start = evidence.find(marker)
-        if start >= 0:
-            return evidence[start:]
-        return "No endpoint-specific effect estimate was available."
-    if key == "conditions":
-        marker = "risk ratio:"
-        start = evidence.lower().find(marker)
-        if start >= 0:
-            summary = evidence[start:]
-            return summary[0].upper() + summary[1:]
-        return "No prevalence effect estimate was available."
-    return "No endpoint-specific estimate was available."
-
-
-def _statistical_evidence_v13(
+def _overall_evidence(
+    summary: Mapping[str, Any],
     validation: Mapping[str, Any],
-    discrepancies: Sequence[Mapping[str, Any]],
-) -> str:
-    aggregate = _mapping(validation.get("aggregate"))
-    rows = []
-    for module in _mapping_sequence(validation.get("modules")):
-        summary = _mapping(module.get("statistical_summary"))
-        rows.append((
-            module.get("module_name"),
-            summary.get("validation_status"),
-            summary.get("significant_test_count"),
-            summary.get("significant_after_fdr_count"),
-            summary.get("valid_for_statistical_comparison"),
-        ))
-
-    body = "".join(
-        f'<tr><td>{escape(_fmt(module))}</td><td>{_badge(status)}</td>'
-        f'<td>{escape(_fmt(significant))}</td><td>{escape(_fmt(fdr))}</td>'
-        f'<td>{_badge("performed" if valid else "incomplete")}</td>'
-        f'<td>{_badge("not demonstrated" if discrepancies else "pass")}</td></tr>'
-        for module, status, significant, fdr, valid in rows
-    )
-
-    endpoint_rows = "".join(
-        f'<tr><td>{escape(str(item.get("title") or item.get("key") or "Endpoint"))}</td>'
-        f'<td>{escape(_fmt(item.get("synthea")))}</td>'
-        f'<td>{escape(_fmt(item.get("psynthea")))}</td>'
-        f'<td>{escape(str(item.get("difference") or "—"))}</td>'
-        f'<td>{escape(_endpoint_statistical_summary(item))}</td></tr>'
-        for item in discrepancies
-    )
-    endpoint_table = (
-        '<h3>Key endpoint estimates</h3>'
-        '<table><thead><tr><th>Endpoint</th><th>Synthea</th><th>Psynthea</th>'
-        '<th>Relative difference</th><th>Statistical estimate</th></tr></thead>'
-        f'<tbody>{endpoint_rows}</tbody></table>'
-        '<p class="muted">A 95 % confidence interval is shown only when present '
-        'in persisted upstream evidence. No interval or effect-size identity is '
-        'inferred by the reporting stage.</p>'
-        if endpoint_rows
-        else '<p class="empty">No key discrepant endpoint estimates were available.</p>'
-    )
-
-    return (
-        f'<div class="cards">'
-        f'{_metric_card("Modules tested", aggregate.get("module_count"))}'
-        f'{_metric_card("Nominally significant tests", aggregate.get("significant_test_count"))}'
-        f'{_metric_card("Significant after FDR", aggregate.get("significant_after_fdr_count"))}'
-        f'{_metric_card("Warnings", aggregate.get("warning_count"))}'
-        f'</div><h3>Module-level interpretation</h3>'
-        f'<table><thead><tr><th>Module</th><th>Validation status</th>'
-        f'<th>Nominally significant</th><th>After FDR</th><th>Comparison</th>'
-        f'<th>Equivalence</th></tr></thead><tbody>{body}</tbody></table>'
-        f'{endpoint_table}'
-        '<p class="muted">Multiple tests supporting the same clinical discrepancy '
-        'are consolidated in Section 3. P-values, effect estimates and confidence '
-        'intervals are reproduced from the Validation and Knowledge engines; the '
-        'report performs no statistical recalculation.</p>'
-    )
-
-
-def _validation_scope(knowledge: Mapping[str, Any]) -> str:
-    identifiers = _collect_validation_identifiers(knowledge)
-    spanish = sorted(x for x in identifiers if "SPANISH." in x.upper())
-    other = _consolidate_validation_identifiers(
-        x for x in identifiers if x not in spanish and x.upper().startswith("EPI.")
-    )
-    if spanish:
-        spanish_html = _html_list(spanish, "")
-        spanish_note = "Spanish-healthcare rules were present but were not evaluated with an explicit Spanish clinical reference."
-    else:
-        spanish_html = '<p class="empty">No Spanish-healthcare rule identifiers were present in the persisted Knowledge Engine output.</p>'
-        spanish_note = "Spanish healthcare adaptation remains outside this experiment's scope."
-    return f'<div class="scope-grid"><div class="scope-box"><span class="label">Evaluated in this experiment</span><h3>Synthea–Psynthea equivalence</h3><ul><li>Functional output generation</li><li>Clinical event volumes</li><li>Prevalence and distributional endpoints</li><li>Multiplicity-adjusted statistical evidence</li></ul></div><div class="scope-box"><span class="label">Not evaluated in this experiment</span><h3>Spanish healthcare adaptation</h3>{spanish_html}<p>{escape(spanish_note)}</p><p class="muted">These dimensions require an independent experiment with an explicit Spanish clinical reference. They must not be interpreted as failed Synthea–Psynthea equivalence results.</p></div></div><details><summary>Other incomplete or non-applicable validation dimensions</summary>{_html_list(other, "No additional out-of-scope dimensions were identified.")}</details>'
-
-
-def _consolidate_validation_identifiers(identifiers: Sequence[str] | Any) -> list[str]:
-    consolidated: dict[str, str] = {}
-    suffixes = {"PASS", "FAIL", "WARNING", "INFERENCE", "INCOMPLETE", "INCONCLUSIVE", "RECALIBRATE", "NOT_APPLICABLE", "NOT_EVALUATED"}
-    for raw in identifiers:
-        value = str(raw).strip()
-        parts = value.split(".")
-        while parts and parts[-1].upper() in suffixes:
-            parts.pop()
-        key = ".".join(parts) or value
-        consolidated.setdefault(key.casefold(), key)
-    return sorted(consolidated.values(), key=str.casefold)
-
-
-def _collect_validation_identifiers(value: Any) -> set[str]:
-    identifiers: set[str] = set()
-    def visit(item: Any) -> None:
-        if isinstance(item, Mapping):
-            for key, child in item.items():
-                if isinstance(child, str) and str(key).lower() in {"rule_id", "id", "action_id", "rule", "code"}:
-                    if "SPANISH." in child.upper() or child.upper().startswith("EPI."):
-                        identifiers.add(child)
-                visit(child)
-        elif isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
-            for child in item: visit(child)
-        elif isinstance(item, str):
-            for token in item.replace("'", " ").replace('"', " ").replace(",", " ").split():
-                cleaned = token.strip(".;:()[]{}")
-                if "SPANISH." in cleaned.upper() or cleaned.upper().startswith("EPI."):
-                    identifiers.add(cleaned)
-    visit(value)
-    return identifiers
-
-def _root_cause_assessment_v13(
+    knowledge: Mapping[str, Any],
     root: Mapping[str, Any],
-    discrepancies: Sequence[Mapping[str, Any]],
 ) -> str:
-    conclusion = _mapping(root.get("conclusion"))
-    counts = _mapping(root.get("counts"))
-    findings = _mapping_sequence(root.get("findings"))
-    candidates = {
-        str(item.get("id")): item
-        for item in _mapping_sequence(root.get("candidates"))
-    }
-
-    plausible = [
-        finding
-        for finding in findings
-        if str(finding.get("status")).lower() in {"plausible", "probable", "confirmed"}
-    ]
-    selected: list[Mapping[str, Any]] = []
-    for finding in plausible:
-        for candidate_id in _sequence(finding.get("selected_candidate_ids")):
-            candidate = candidates.get(str(candidate_id))
-            if candidate:
-                selected.append(candidate)
-
-    statement = "No clinically specific cause has been confirmed."
-    if selected:
-        raw = str(selected[0].get("statement") or selected[0].get("category") or "")
-        if "probabilistic" in raw.lower() or "probabilistic" in str(selected[0]).lower():
-            statement = (
-                "Differences in probabilistic transition semantics may contribute "
-                "to at least one observed discrepancy."
+    del summary
+    functional = _functional_evidence_status(validation)
+    statistical_statuses = [
+        str(
+            _mapping(module.get("statistical_summary")).get(
+                "validation_status"
             )
-        elif raw:
-            statement = raw
-
-    status = str(conclusion.get("status") or "inconclusive")
-    verification_count = _integer(counts.get("verifications"))
-    verification_status = "Performed" if verification_count > 0 else "Not performed"
-    confirmed_count = sum(
-        1 for finding in findings if str(finding.get("status")).lower() == "confirmed"
+            or "unknown"
+        )
+        for module in _mapping_sequence(validation.get("modules"))
+    ]
+    knowledge_statuses = [
+        str(module.get("overall_status") or "unknown")
+        for module in _mapping_sequence(knowledge.get("modules"))
+    ]
+    root_status = str(
+        _mapping(root.get("conclusion")).get("status") or "unknown"
     )
-
+    items = (
+        ("Functional evidence", functional),
+        (
+            "Statistical evidence",
+            _aggregate_evidence_status(statistical_statuses),
+        ),
+        (
+            "Clinical and knowledge evidence",
+            _aggregate_evidence_status(knowledge_statuses),
+        ),
+        ("Causal evidence", root_status),
+    )
     return (
-        f'<div class="cards">'
-        f'{_metric_card("Root-cause status", status)}'
-        f'{_metric_card("Deterministic verification", verification_status)}'
-        f'{_metric_card("Confirmed causes", confirmed_count)}'
-        f'</div><h3>Leading investigation hypothesis</h3><p>{escape(statement)}</p>'
-        '<div class="discrepancy-grid">'
-        '<div class="mini"><span class="label">Evidence status</span>Indirect only. '
-        'No deterministic verification has established causality.</div>'
-        f'<div class="mini"><span class="label">Affected discrepancies</span>'
-        f'{escape(", ".join(str(item.get("title")) for item in discrepancies) or "Not linked")}</div>'
-        '<div class="mini"><span class="label">Scientific interpretation</span>'
-        'The current root-cause result is hypothesis-generating, not confirmatory.'        '</div></div><div class="callout"><strong>Causal caution:</strong> A plausible '
-        'candidate prioritises investigation. It must not be reported as the '
-        'confirmed explanation while verification remains incomplete.</div>'
+        '<div class="evidence-profile">'
+        + "".join(_evidence_profile_row(label, status) for label, status in items)
+        + '</div><p class="muted">Bar length represents evidence status, not a '
+        'probability or newly calculated confidence score.</p>'
     )
 
 
-def _recommendations_v13(knowledge: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
-    primary = {
-        "observations": ("Restore Observation generation", "Ensure clinically intended observation states emit valid records, then repeat the same seeded comparison."),
-        "medications": ("Restore Medication generation", "Ensure medication-order states emit medication records and validate event retention against Synthea."),
-        "encounters": ("Review encounter workflow", "Inspect encounter creation, closure and transition logic responsible for the approximately 95% volume deficit."),
-        "conditions": ("Review hypertension probabilities", "Audit incidence, prevalence and transition probabilities, then repeat prevalence validation across independent seeds."),
-    }
-    rendered = []
-    for idx, item in enumerate(discrepancies, 1):
-        title, action = primary.get(str(item.get("key")), (str(item.get("title")), "Investigate and repeat validation."))
-        rendered.append(f'''<div class="recommendation"><div class="rank">{idx}</div><div><div>{_badge('urgent' if item.get('severity')=='critical' else 'high')} {_badge('blocking')}</div><h3>{escape(title)}</h3><p>{escape(action)}</p><p><strong>Verification:</strong> Re-run identical cohorts first, then repeat across independent seeds and confirm that the relevant endpoint falls within the approved tolerance.</p></div></div>''')
-    additional = []
-    for module in _mapping_sequence(knowledge.get("modules")):
-        for rec in _mapping_sequence(_mapping(module.get("recommendation_plan")).get("items")):
-            action = str(rec.get("action") or rec.get("action_id") or "")
-            if action and not any(token in action.lower() for token in ("spanish", "primary_care", "referral")):
-                additional.append(action)
-    additional = list(dict.fromkeys(additional))
-    details = '<details><summary>Additional engine recommendations</summary>' + _html_list(additional, "No additional recommendations were generated.") + '</details>'
-    return ''.join(rendered) + details
+def _functional_evidence_status(validation: Mapping[str, Any]) -> str:
+    summaries = [
+        _mapping(module.get("functional_summary"))
+        for module in _mapping_sequence(validation.get("modules"))
+    ]
+    if not summaries:
+        return "unknown"
+    if any(not bool(item.get("valid_for_comparison")) for item in summaries):
+        return "fail"
+    if any(_integer(item.get("blocking_issue_count")) > 0 for item in summaries):
+        return "fail"
+    if all(
+        bool(item.get("synthea_functional"))
+        and bool(item.get("psynthea_functional"))
+        for item in summaries
+    ):
+        return "pass with warning" if any(_integer(item.get("warning_count")) > 0 for item in summaries) else "pass"
+    return _aggregate_evidence_status(
+        [str(item.get("status") or "unknown") for item in summaries]
+    )
+
+def _aggregate_evidence_status(statuses: Sequence[str]) -> str:
+    normalized = [status.casefold().replace("_", " ") for status in statuses if status]
+    if not normalized:
+        return "unknown"
+    if any(status in {"fail", "failed", "rejected"} for status in normalized):
+        return "fail"
+    if any("incomplete" in status for status in normalized):
+        return "incomplete"
+    if any(status in {"partially comparable", "partial", "warning", "review"} for status in normalized):
+        return "partial"
+    if any("inconclusive" in status for status in normalized):
+        return "inconclusive"
+    if all(status in {"pass", "passed", "ready", "succeeded", "comparable"} for status in normalized):
+        return "pass"
+    return normalized[0]
 
 
-def _limitations_v13(
+def _evidence_card(label: str, status: str, note: str) -> str:
+    normalized = status.casefold().replace("_", " ")
+    css = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or "unknown"
+    css = {
+        "partially-comparable": "partial",
+        "pass-with-warning": "partial",
+    }.get(css, css)
+    widths = {"pass": 100, "partial": 70, "review": 55, "fail": 35, "incomplete": 20, "inconclusive": 20, "unknown": 10}
+    width = widths.get(css, 45)
+    display = _humanize(normalized)
+    return (
+        f'<div class="evidence-card evidence-{escape(css)}">'
+        f'<span class="label">{escape(label)}</span>'
+        f'<div class="evidence-status">{escape(display)}</div>'
+        f'<span class="evidence-note">{escape(note)}</span>'
+        f'<div class="meter" aria-hidden="true"><span style="width:{width}%"></span></div></div>'
+    )
+
+
+def _final_assessment_summary(
+    decision: str,
+    summary: Mapping[str, Any],
     knowledge: Mapping[str, Any],
     root: Mapping[str, Any],
     discrepancies: Sequence[Mapping[str, Any]],
 ) -> str:
-    limitations = [
-        "The current experiment uses one cohort size and one random seed; reproducibility across independent seeds has not yet been demonstrated.",
-        "Missing Observation and Medication outputs prevent complete clinical equivalence assessment for the hypertension module.",
-        "The Root Cause Engine result is inconclusive and no deterministic verification has confirmed a causal mechanism.",
-        "Spanish healthcare adaptation was outside the evaluated scope and requires a separate reference-driven experiment.",
-    ]
-    questions_map = {
-        "observations": "Why are Observation states producing no records?",
-        "medications": "Why are MedicationOrder or treatment states not emitting medication records?",
-        "encounters": "Which workflow or transition logic reduces encounter generation relative to Synthea?",
-        "conditions": "Which probability, transition or denominator difference produces excess hypertension prevalence?",
-    }
-    questions = [
-        questions_map[str(item.get("key"))]
-        for item in discrepancies
-        if str(item.get("key")) in questions_map
+    validation_summary = _mapping(summary.get("validation"))
+    root_conclusion = _mapping(root.get("conclusion"))
+    blocking = sum(bool(item.get("blocking")) for item in discrepancies)
+    equivalent = decision == "PASS" and not discrepancies
+    research_ready = _research_readiness_label(decision, knowledge).startswith("Research ready")
+    values = (
+        ("Equivalent", "Yes" if equivalent else "No"),
+        ("Research ready", "Yes" if research_ready else "No"),
+        ("Blocking discrepancies", blocking),
+        ("FDR-significant tests", validation_summary.get("significant_after_fdr_count", 0)),
+        ("Root cause", root_conclusion.get("status") or "unknown"),
+        ("Next validation", "Required" if not research_ready else "Not required"),
+    )
+    return '<div class="final-assessment">' + "".join(
+        f'<div class="mini"><span class="label">{escape(label)}</span><strong>{escape(_fmt(value))}</strong></div>'
+        for label, value in values
+    ) + '</div>'
+
+
+def _research_readiness_label(decision: str, knowledge: Mapping[str, Any]) -> str:
+    modules = _mapping_sequence(knowledge.get("modules"))
+    ready = bool(modules) and all(bool(module.get("research_use_ready")) for module in modules)
+    if decision == "PASS" and ready:
+        return "Research ready within evaluated scope"
+    if decision == "INCOMPLETE":
+        return "Research readiness cannot be assessed"
+    return "Not research ready"
+
+
+def _research_readiness(
+    decision: str,
+    summary: Mapping[str, Any],
+    knowledge: Mapping[str, Any],
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    knowledge_summary = _mapping(summary.get("knowledge"))
+    blocking = [item for item in discrepancies if item.get("blocking")]
+    requirements = [
+        "Resolve or justify all blocking discrepancies.",
+        "Repeat the identical seeded cohort after remediation.",
+        "Replicate the experiment across independent seeds and cohort sizes.",
+        "Confirm that all predefined functional and statistical tolerances are met.",
     ]
     return (
-        f'<h3>Primary limitations</h3>'
-        f'{_html_list(limitations, "No primary limitations were identified.")}'
-        f'<h3>Outstanding scientific questions</h3>'
-        f'{_html_list(questions, "No outstanding scientific question was identified.")}'
-        '<p class="muted">Internal root-cause signal identifiers and unresolved '
-        'engine-level records are intentionally excluded from the research-facing '
-        'HTML report. They remain available in the hashed machine-readable Root '
-        'Cause artifact for engineering investigation.</p>'
+        '<div class="readiness">'
+        f'<div class="cards">{_metric_card("Current status", _research_readiness_label(decision, knowledge))}'
+        f'{_metric_card("Blocking ranked discrepancies", len(blocking))}'
+        f'{_metric_card("Knowledge blocking findings", knowledge_summary.get("blocking_finding_count"))}'
+        f'{_metric_card("Next validation", "Required" if decision != "PASS" else "Not required")}</div>'
+        '<h3>Requirements before research use</h3>' + _html_list(requirements, "No additional requirement was identified.")
+        + '</div>'
     )
 
 
-def _technical_appendix(payload: Mapping[str, Any], validation: Mapping[str, Any], knowledge: Mapping[str, Any], root: Mapping[str, Any]) -> str:
-    validation_summary = {"schema_version": validation.get("schema_version"), "generated_at": validation.get("generated_at"), "aggregate": validation.get("aggregate"), "configuration": validation.get("configuration"), "cohorts": validation.get("cohorts"), "modules": validation.get("modules")}
-    knowledge_summary = {"schema_version": knowledge.get("schema_version"), "generated_at": knowledge.get("generated_at"), "aggregate": knowledge.get("aggregate"), "configuration": knowledge.get("configuration"), "modules": [{"module_name": module.get("module_name"), "overall_status": module.get("overall_status"), "research_use_ready": module.get("research_use_ready"), "finding_count": module.get("finding_count"), "blocking_finding_count": module.get("blocking_finding_count"), "recommendation_count": module.get("recommendation_count"), "incomplete_rule_count": module.get("incomplete_rule_count"), "artifacts": module.get("artifacts")} for module in _mapping_sequence(knowledge.get("modules"))]}
-    root_summary = {"schema_version": root.get("schema_version"), "generated_at": root.get("generated_at"), "identity": root.get("identity"), "conclusion": root.get("conclusion"), "counts": root.get("counts"), "limitations": root.get("limitations"), "engine": root.get("engine")}
-    return (_render_stage_table(_mapping_sequence(payload.get("stage_summary"))) + _json_details("Source artifact manifest", payload.get("source_artifacts")) + _json_details("Validation Engine summary", validation_summary) + _json_details("Knowledge Engine summary", knowledge_summary) + _json_details("Root Cause Engine summary", root_summary) + '<div class="callout"><strong>Full machine-readable outputs:</strong> Complete Validation, Knowledge and Root Cause payloads remain available as separately hashed source artifacts listed in the manifest above. They are intentionally not duplicated inside this HTML report.</div>')
+def _research_facing_statistical_summary(item: Mapping[str, Any]) -> str:
+    summary = _statistical_summary_from_findings(item.get("related_findings") or ())
+    if summary and not summary.startswith("No endpoint-specific"):
+        return summary
+    category = str(item.get("category") or "")
+    if category in {"missing_candidate_output", "candidate_only_output", "volume_difference"}:
+        return "No direct statistical endpoint was extracted; evidence derives from functional cohort comparison and Knowledge Engine interpretation."
+    return "No direct statistical endpoint is available; this discrepancy is supported by persisted functional or knowledge-layer evidence."
+
+
+def _research_facing_candidate_label(candidate: Mapping[str, Any]) -> str:
+    category = str(candidate.get("category") or "").strip()
+    if category:
+        return _humanize(category.split(".")[-1])
+    title = str(candidate.get("title") or "").strip()
+    if title and not _contains_internal_identifier(title):
+        return title
+    statement = str(candidate.get("statement") or "").strip()
+    quoted = re.search(r"root_cause(?:\.engine)?\.([a-zA-Z0-9_]+)", statement)
+    if quoted:
+        return _humanize(quoted.group(1))
+    return "Unverified causal hypothesis"
+
+
+def _contains_internal_identifier(value: str) -> bool:
+    text = value.casefold()
+    return any(token in text for token in (
+        "signal:", "candidate:", "protocol.", "protocol:", "root_cause.",
+        "root-cause.", "request_id", "artifact_id",
+    ))
+
+
+def _replacement_verdict(decision: str, knowledge: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
+    ready = bool(_mapping_sequence(knowledge.get("modules"))) and all(bool(x.get("research_use_ready")) for x in _mapping_sequence(knowledge.get("modules")))
+    if decision == "PASS" and ready and not discrepancies: return "Psynthea can replace Synthea within the evaluated scope"
+    if decision == "INCOMPLETE": return "Replacement cannot be assessed"
+    return "Psynthea cannot yet replace Synthea for the evaluated scope"
+
+
+def _methods_and_scope(payload: Mapping[str, Any], validation: Mapping[str, Any], knowledge: Mapping[str, Any]) -> str:
+    cohort=_mapping(payload.get("cohort")); modules=', '.join(str(x) for x in _sequence(cohort.get("modules"))) or '—'
+    return (
+        '<div class="figure-grid">'
+        f'<div class="method-box"><span class="label">Design</span><p>Deterministic comparison of persisted Synthea and Psynthea cohorts using functional, statistical, clinical-knowledge and root-cause evidence.</p></div>'
+        f'<div class="method-box"><span class="label">Cohort</span><p>Population: <strong>{escape(_fmt(cohort.get("population_size")))}</strong><br>Seed: <strong>{escape(_fmt(cohort.get("seed")))}</strong><br>Modules: <strong>{escape(modules)}</strong></p></div>'
+        '<div class="method-box"><span class="label">Decision principle</span><p>Equivalence requires complete outputs, acceptable effect magnitude, clinically concordant content and no unresolved blocking evidence.</p></div>'
+        '</div><p class="muted">The report consolidates upstream results and does not recalculate tests, acquire external references or infer new causal mechanisms.</p>'
+    )
+
+
+def _cohort_bar_chart(validation: Mapping[str, Any]) -> str:
+    cohorts=_cohort_counts(validation); a=_mapping(cohorts.get("synthea")); b=_mapping(cohorts.get("psynthea")); domains=_cohort_domains(validation)
+    vals=[max(float(a.get(d) or 0),float(b.get(d) or 0)) for d in domains]
+    if not domains or max(vals,default=0)<=0: return '<p class="empty">No numeric cohort outputs were available for visualisation.</p>'
+    width=900; row_h=52; height=48+row_h*len(domains); maxv=max(vals)
+    parts=[f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Cohort output comparison">', '<text x="230" y="22" font-size="12">Synthea</text><text x="315" y="22" font-size="12">Psynthea</text>']
+    for i,d in enumerate(domains):
+        y=43+i*row_h; av=float(a.get(d) or 0); bv=float(b.get(d) or 0); scale=520/maxv
+        parts += [f'<text x="8" y="{y+18}" font-size="13">{escape(_humanize(d))}</text>', f'<rect x="230" y="{y}" width="{av*scale:.1f}" height="15" rx="3" fill="#456f9a"/>', f'<rect x="230" y="{y+19}" width="{bv*scale:.1f}" height="15" rx="3" fill="#8aa9c5"/>', f'<text x="{235+av*scale:.1f}" y="{y+12}" font-size="11">{escape(_fmt(a.get(d)))}</text>', f'<text x="{235+bv*scale:.1f}" y="{y+31}" font-size="11">{escape(_fmt(b.get(d)))}</text>']
+    parts.append('</svg>')
+    return '<div class="chart">'+''.join(parts)+'</div>'
+
+
+def _domain_concordance_matrix(
+    validation: Mapping[str, Any],
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    domains = _cohort_domains(validation)
+    cohorts = _cohort_counts(validation)
+    reference = _mapping(cohorts.get("synthea"))
+    candidate = _mapping(cohorts.get("psynthea"))
+    rows: list[str] = []
+
+    for domain in domains:
+        domain_findings = [
+            item
+            for item in discrepancies
+            if str(item.get("domain")) == domain
+        ]
+        count_finding = next(
+            (
+                item
+                for item in domain_findings
+                if item.get("category")
+                in {
+                    "missing_candidate_output",
+                    "candidate_only_output",
+                    "volume_difference",
+                }
+            ),
+            None,
+        )
+        has_clinical_finding = any(
+            item.get("category") == "knowledge_finding"
+            for item in domain_findings
+        )
+
+        category = str(
+            count_finding.get("category") if count_finding else ""
+        )
+        if category in {
+            "missing_candidate_output",
+            "candidate_only_output",
+        }:
+            output = "fail"
+            volume = "not assessable"
+        else:
+            output = "pass"
+            if category == "volume_difference":
+                volume = "review"
+            elif (
+                _numeric_zero(reference.get(domain))
+                and _numeric_zero(candidate.get(domain))
+            ):
+                volume = "not informative"
+            else:
+                volume = "pass"
+
+        clinical = "review" if has_clinical_finding else "not evaluated"
+        overall = (
+            "fail"
+            if output == "fail"
+            else (
+                "review"
+                if volume == "review" or clinical == "review"
+                else "pass"
+            )
+        )
+        rows.append(
+            f'<tr class="matrix-{escape(overall)}">'
+            f'<td>{escape(_humanize(domain))}</td>'
+            f'<td class="status">{_badge(output)}</td>'
+            f'<td class="status">{_badge(volume)}</td>'
+            f'<td class="status">{_badge(clinical)}</td>'
+            f'<td class="status">{_badge(overall)}</td></tr>'
+        )
+
+    if not rows:
+        return '<p class="empty">No domain matrix could be constructed.</p>'
+    return (
+        '<table><thead><tr><th>Domain</th><th>Output completeness</th>'
+        '<th>Volume</th><th>Clinical concordance</th><th>Overall</th>'
+        '</tr></thead><tbody>'
+        + "".join(rows)
+        + '</tbody></table>'
+    )
+
+
+def _finding_card(
+    item: Mapping[str, Any],
+    *,
+    narrative: ScientificNarrativeFormatter,
+    compact: bool = False,
+) -> str:
+    stats = _extract_display_statistics(item.get("related_findings") or ())
+    details = _statistical_details_html(stats, item)
+    implication = narrative.scientific_implication(item)
+    return (
+        '<article class="finding">'
+        f'<div>{_badge(item.get("severity"))} '
+        f'{_badge("blocking" if item.get("blocking") else "review")}</div>'
+        f'<h3>{escape(_publication_finding_title(item))}</h3>'
+        '<div class="finding-grid">'
+        f'<div class="finding-panel"><span class="label">Observation</span>'
+        f'<p>{escape(narrative.observed_result(item))}</p></div>'
+        f'<div class="finding-panel"><span class="label">Interpretation</span>'
+        f'<p>{escape(narrative.scientific_interpretation(item))}</p></div>'
+        + (
+            ''
+            if compact
+            else (
+                '<div class="finding-panel finding-wide">'
+                '<span class="label">Scientific implication</span>'
+                f'<p>{escape(implication)}</p></div>'
+            )
+        )
+        + '</div>'
+        + details
+        + '</article>'
+    )
+
+
+def _observed_result(item: Mapping[str, Any]) -> str:
+    if item.get('synthea') is not None or item.get('psynthea') is not None:
+        return f"Synthea: {_fmt(item.get('synthea'))}; Psynthea: {_fmt(item.get('psynthea'))}; relative difference: {item.get('difference') or 'N/A'}."
+    stats=_extract_display_statistics(item.get('related_findings') or ())
+    if stats.get('shared') is not None:
+        return f"{_fmt(stats.get('shared'))} clinical codes were shared; code-set overlap was {_qualify_overlap(stats.get('jaccard'))} and frequency distributions were {_qualify_divergence(stats.get('jsd'))}."
+    if stats.get('synthea_prevalence') is not None or stats.get('psynthea_prevalence') is not None:
+        return f"Synthea prevalence: {_format_percent(stats.get('synthea_prevalence'))}; Psynthea prevalence: {_format_percent(stats.get('psynthea_prevalence'))}; absolute difference: {_format_percentage_points(stats.get('absolute_difference'))}."
+    return _clean_research_text(str(item.get('evidence') or 'Persisted scientific evidence identified a material discrepancy.'))
+
+
+def _scientific_meaning(item: Mapping[str, Any]) -> str:
+    title=str(item.get('title') or '').casefold(); category=str(item.get('category') or '')
+    if 'code concordance' in title or 'code overlap' in title: return 'The generators do not represent a sufficiently comparable set of clinical concepts or concept frequencies for this domain.'
+    if 'prevalence endpoint' in title: return 'The endpoint prevalence differs materially between generators and equivalence is not supported for this clinical concept.'
+    if 'prevalence profile' in title: return 'The population disease-burden profile is not consistently reproduced across the evaluated endpoints.'
+    if category=='missing_candidate_output': return 'The candidate generator does not reproduce a clinical output present in the reference generator.'
+    if category=='candidate_only_output': return 'The candidate generator introduces an output absent from the reference generator.'
+    if category=='volume_difference': return 'The clinical event volume differs beyond the configured materiality threshold.'
+    return _clean_research_text(str(item.get('impact') or 'The persisted evidence does not support scientific equivalence.'))
+
+
+def _research_implication(item: Mapping[str, Any]) -> str:
+    domain=_humanize(str(item.get('domain') or 'this endpoint')).lower(); category=str(item.get('category') or '')
+    if category=='missing_candidate_output': return f"Studies relying on {domain} would omit clinically relevant events and should not use Psynthea as a substitute until output is restored."
+    if 'observations' in str(item.get('title') or '').casefold(): return 'Observation-based phenotyping, monitoring and outcome analyses may produce materially different results.'
+    if 'prevalence' in str(item.get('title') or '').casefold(): return 'Population-level disease-burden estimates may be biased or non-comparable.'
+    return str(item.get('impact') or 'Downstream analyses may not be scientifically comparable until this finding is resolved.')
+
+
+def _extract_display_statistics(findings: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    aliases={'jaccard':'jaccard','jaccard_index':'jaccard','overlap':'overlap','overlap_coefficient':'overlap','jensen_shannon_divergence':'jsd','jsd':'jsd','shared':'shared','shared_count':'shared','synthea_prevalence':'synthea_prevalence','psynthea_prevalence':'psynthea_prevalence','absolute_difference':'absolute_difference','relative_difference':'relative_difference','risk_ratio':'risk_ratio','odds_ratio':'odds_ratio','adjusted_p':'adjusted_p','adjusted_p_value':'adjusted_p','fdr_p_value':'adjusted_p','p_value':'p_value','ci_lower':'ci_lower','ci_upper':'ci_upper'}
+    out={}
+    for finding in findings:
+        for key,value in _walk_items(finding):
+            nk=key.casefold(); target=aliases.get(nk)
+            if target and target not in out and (_to_float(value) is not None or target=='shared'): out[target]=_to_float(value) if target!='shared' else value
+        text=' '.join(str(x) for x in _flatten_scalars(finding))
+        for pattern,target in [(r'Jaccard\s*=\s*([0-9.eE+-]+)','jaccard'),(r'overlap\s*=\s*([0-9.eE+-]+)','overlap'),(r'JSD\s*=\s*([0-9.eE+-]+)','jsd'),(r'shared\s*=\s*(\d+)','shared'),(r'Synthea prevalence\s*=\s*([0-9.eE+-]+)','synthea_prevalence'),(r'psynthea prevalence\s*=\s*([0-9.eE+-]+)','psynthea_prevalence'),(r'absolute_difference\s*=\s*([0-9.eE+-]+)','absolute_difference'),(r'risk_ratio\s*=\s*([0-9.eE+-]+)','risk_ratio'),(r'adjusted_p\s*=\s*([0-9.eE+-]+)','adjusted_p')]:
+            m=re.search(pattern,text,re.I)
+            if m and target not in out: out[target]=float(m.group(1))
+        ci=re.search(r'95%\s*CI\s*=\s*\[\s*([0-9.eE+-]+)\s*,\s*([0-9.eE+-]+)\s*\]',text,re.I)
+        if ci: out.setdefault('ci_lower',float(ci.group(1))); out.setdefault('ci_upper',float(ci.group(2)))
+    return out
+
+
+def _statistical_details_html(stats: Mapping[str, Any], item: Mapping[str, Any]) -> str:
+    labels=[('jaccard','Jaccard index',lambda x:f'{x:.2f}'),('overlap','Overlap coefficient',lambda x:f'{x:.2f}'),('jsd','Jensen–Shannon divergence',lambda x:f'{x:.3f}'),('risk_ratio','Risk ratio',lambda x:f'{x:.2f}'),('odds_ratio','Odds ratio',lambda x:f'{x:.2f}'),('adjusted_p','FDR-adjusted p-value',_format_p_value),('p_value','Nominal p-value',_format_p_value)]
+    cells=[]
+    for key,label,fn in labels:
+        if stats.get(key) is not None: cells.append(f'<div class="stat-item"><span class="label">{escape(label)}</span><strong>{escape(fn(float(stats[key])))}</strong></div>')
+    if stats.get('ci_lower') is not None and stats.get('ci_upper') is not None: cells.append(f'<div class="stat-item"><span class="label">95% confidence interval</span><strong>{float(stats["ci_lower"]):.2f}–{float(stats["ci_upper"]):.2f}</strong></div>')
+    if stats.get('synthea_prevalence') is not None: cells.append(f'<div class="stat-item"><span class="label">Synthea prevalence</span><strong>{escape(_format_percent(stats["synthea_prevalence"]))}</strong></div>')
+    if stats.get('psynthea_prevalence') is not None: cells.append(f'<div class="stat-item"><span class="label">Psynthea prevalence</span><strong>{escape(_format_percent(stats["psynthea_prevalence"]))}</strong></div>')
+    if not cells: return '<details><summary>Evidence provenance</summary><p class="muted">This finding is supported by persisted functional or knowledge-layer evidence; no endpoint-level statistical estimate was extracted.</p></details>'
+    note=' JSD ranges from 0 (identical distributions) toward 1 (greater divergence).' if stats.get('jsd') is not None else ''
+    return '<details><summary>Statistical details</summary><div class="stat-list">'+''.join(cells)+'</div><p class="muted">Values are rounded for readability; full precision remains in the source artifacts.'+note+'</p></details>'
+
+
+def _forest_plot(
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    points: list[tuple[str, float, float, float]] = []
+    seen: set[tuple[str, float, float, float]] = set()
+
+    for item in discrepancies:
+        stats = _extract_display_statistics(
+            item.get("related_findings") or ()
+        )
+        rr = stats.get("risk_ratio")
+        lower = stats.get("ci_lower")
+        upper = stats.get("ci_upper")
+        if (
+            rr is None
+            or lower is None
+            or upper is None
+            or float(lower) <= 0
+            or float(upper) <= 0
+        ):
+            continue
+
+        domain = str(item.get("domain") or item.get("key") or "")
+        identity = (
+            domain.casefold(),
+            round(float(rr), 8),
+            round(float(lower), 8),
+            round(float(upper), 8),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        points.append(
+            (
+                _publication_finding_title(item),
+                float(rr),
+                float(lower),
+                float(upper),
+            )
+        )
+
+    if not points:
+        return (
+            '<p class="muted">No valid risk-ratio confidence intervals '
+            'were available for a forest plot.</p>'
+        )
+
+    import math
+
+    points = points[:8]
+    max_log = max(
+        abs(math.log(value))
+        for _, estimate, lower, upper in points
+        for value in (lower, upper, estimate)
+    )
+    max_log = max(max_log, 0.4)
+    width = 900
+    height = 55 + 42 * len(points)
+    left = 330
+    span = 500
+
+    def x_position(value: float) -> float:
+        return left + (math.log(value) + max_log) / (2 * max_log) * span
+
+    output = [
+        f'<svg viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="Risk-ratio forest plot">',
+        f'<line x1="{x_position(1):.1f}" y1="25" '
+        f'x2="{x_position(1):.1f}" y2="{height - 20}" '
+        'stroke="#777" stroke-dasharray="4 4"/>',
+    ]
+    for index, (label, estimate, lower, upper) in enumerate(points):
+        y = 45 + index * 42
+        short_label = label if len(label) < 42 else label[:39] + "..."
+        output.extend(
+            [
+                f'<text x="5" y="{y + 4}" font-size="12">'
+                f'{escape(short_label)}</text>',
+                f'<line x1="{x_position(lower):.1f}" y1="{y}" '
+                f'x2="{x_position(upper):.1f}" y2="{y}" '
+                'stroke="#315f88" stroke-width="3"/>',
+                f'<circle cx="{x_position(estimate):.1f}" cy="{y}" '
+                'r="5" fill="#183b63"/>',
+                f'<text x="840" y="{y + 4}" font-size="11">'
+                f'{estimate:.2f} [{lower:.2f}–{upper:.2f}]</text>',
+            ]
+        )
+    output.append("</svg>")
+    return (
+        '<h3>Risk-ratio forest plot</h3><div class="chart">'
+        + "".join(output)
+        + '</div>'
+    )
+
+
+def _discussion_summary(decision: str, discrepancies: Sequence[Mapping[str, Any]], knowledge: Mapping[str, Any]) -> str:
+    leading=', '.join(str(x.get('short_label')) for x in discrepancies[:3] if x.get('short_label')) or 'no material discrepancy'
+    return f'<div class="callout"><strong>Interpretation.</strong> The overall decision is <strong>{escape(decision)}</strong>. The principal evidence concerns {escape(leading)}. These findings should be interpreted as module-specific and constrained to the configured cohort, seed and reference date.</div>'
+
+
+def _likely_mechanism(item: Mapping[str, Any]) -> str:
+    category=str(item.get('category') or ''); domain=_humanize(str(item.get('domain') or 'endpoint')).lower()
+    if category=='missing_candidate_output': return f'Not yet confirmed; candidate mechanisms include missing state transitions, record construction or export retention for {domain}.'
+    if category=='candidate_only_output': return f'Not yet confirmed; defaults or transition semantics may create candidate-only {domain} records.'
+    if 'code concordance' in str(item.get('title') or '').casefold(): return 'Not yet confirmed; code mapping, concept selection or event-frequency semantics may differ.'
+    if 'prevalence' in str(item.get('title') or '').casefold(): return 'Not yet confirmed; disease incidence, eligibility logic, denominators or code mapping may differ.'
+    return 'Not yet confirmed; module transitions, lifecycle semantics, denominators or exporter behaviour require investigation.'
+
+
+def _causal_evidence_label(candidate: Mapping[str, Any], support: int) -> str:
+    status=str(candidate.get('status') or candidate.get('confidence') or 'unverified').replace('_',' ')
+    return f'{support} supporting finding(s); current status: {status}.'
+
+
+def _research_facing_limitation(text: str) -> str:
+    low=text.casefold()
+    if not text.strip(): return ''
+    if 'max_candidates' in low or 'candidate generation exceeded' in low: return 'The causal search retained only the highest-priority hypotheses; additional alternatives may remain unexplored.'
+    if 'verification plan' in low and 'candidate' in low: return 'No deterministic verification protocol was available for the leading causal hypothesis.'
+    if _contains_internal_identifier(text): return ''
+    return _clean_research_text(text)
+
+
+def _clean_research_text(text: str) -> str:
+    text=re.sub(r'\b(?:signal|candidate|protocol|request_id|artifact_id)\s*[:=]\s*\S+','',text,flags=re.I)
+    return re.sub(r'\s+',' ',text).strip()
+
+
+def _format_percent(value: Any) -> str:
+    number=_to_float(value)
+    return 'N/A' if number is None else f'{number*100:.1f}%'
+
+
+def _format_percentage_points(value: Any) -> str:
+    number=_to_float(value)
+    return 'N/A' if number is None else f'{number*100:+.1f} percentage points'
+
+
+def _qualify_overlap(value: Any) -> str:
+    x=_to_float(value)
+    if x is None: return 'not estimable'
+    return 'low' if x<.4 else ('moderate' if x<.7 else 'high')
+
+
+def _qualify_divergence(value: Any) -> str:
+    x=_to_float(value)
+    if x is None: return 'not estimable'
+    return 'strongly divergent' if x>=.5 else ('moderately divergent' if x>=.2 else 'similar')
+
+
+
+def _p_value_relation(value: float) -> str:
+    """Format a p-value as a publication-style relation."""
+    if value < 0.0001:
+        return "< 0.0001"
+    return f"= {value:.3f}"
+
+
+def _publication_finding_title(item: Mapping[str, Any]) -> str:
+    """Convert engine-oriented finding titles into result statements."""
+    domain = _humanize(
+        str(item.get("domain") or item.get("key") or "endpoint")
+    )
+    category = str(item.get("category") or "")
+    reference = item.get("synthea")
+    candidate = item.get("psynthea")
+    if category == "missing_candidate_output":
+        return f"Psynthea did not reproduce {domain} output"
+    if category == "candidate_only_output":
+        return f"Psynthea introduced candidate-only {domain} output"
+    if category == "volume_difference":
+        direction = (
+            "more"
+            if (_relative_difference(reference, candidate) or 0) > 0
+            else "fewer"
+        )
+        return f"Psynthea contained materially {direction} {domain} records"
+    title = str(item.get("title") or "Scientific finding")
+    title = re.sub(
+        r"^Clinical code concordance for ['\"]([^'\"]+)['\"] is fail$",
+        r"Clinical coding for \1 was not concordant",
+        title,
+        flags=re.I,
+    )
+    title = re.sub(
+        r"^Clinical code overlap for ['\"]([^'\"]+)['\"] is inconclusive$",
+        r"Clinical coding evidence for \1 was inconclusive",
+        title,
+        flags=re.I,
+    )
+    title = re.sub(
+        r"^Prevalence endpoint ['\"]([^'\"]+)['\"]:\s*fail$",
+        r"Prevalence differed for \1",
+        title,
+        flags=re.I,
+    )
+    return title
+
+
+def _evidence_profile_row(label: str, status: str) -> str:
+    normalized = status.casefold().replace("_", " ")
+    css = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or "unknown"
+    css = {
+        "partially-comparable": "partial",
+        "pass-with-warning": "partial",
+        "inconclusive": "incomplete",
+        "not-testable": "incomplete",
+    }.get(css, css)
+    widths = {
+        "pass": 100,
+        "partial": 68,
+        "review": 52,
+        "fail": 32,
+        "incomplete": 18,
+        "unknown": 10,
+    }
+    width = widths.get(css, 42)
+    display = _humanize(normalized)
+    return (
+        '<div class="evidence-row">'
+        f'<div class="evidence-label">{escape(label)}</div>'
+        '<div class="evidence-track" aria-hidden="true">'
+        f'<div class="evidence-fill {escape(css)}" '
+        f'style="width:{width}%"></div></div>'
+        f'<div class="evidence-state">{escape(display)}</div>'
+        '</div>'
+    )
+
+
+def _largest_discrepancy_summary(
+    validation: Mapping[str, Any],
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    if not discrepancies:
+        return (
+            '<div class="callout"><strong>Key result.</strong> No material '
+            'discrepancy was identified in the ranked evidence.</div>'
+        )
+    item = discrepancies[0]
+    label = _publication_finding_title(item)
+    difference = str(item.get("difference") or "not estimable")
+    return (
+        '<div class="callout"><strong>Largest ranked discrepancy.</strong> '
+        f'{escape(label)}'
+        + (
+            f' ({escape(difference)}).'
+            if difference not in {"N/A", "not estimable"}
+            else "."
+        )
+        + '</div>'
+    )
+
+
+def _discussion_sections(
+    narrative: ScientificNarrativeFormatter,
+    root: Mapping[str, Any],
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    return (
+        '<h3>Overall interpretation</h3>'
+        f'<div class="discussion-block"><p>{escape(narrative.overall_interpretation())}</p></div>'
+        '<h3>Clinical implications</h3>'
+        f'<div class="discussion-block"><p>{escape(narrative.clinical_implications())}</p></div>'
+        '<h3>Methodological implications</h3>'
+        f'<div class="discussion-block"><p>{escape(narrative.methodological_implications())}</p></div>'
+        + _root_cause_assessment_v13(root, discrepancies)
+        + '<h3>Future work</h3>'
+        '<div class="discussion-block"><p>Future validation should prioritise '
+        'patient-level trace comparison, deterministic verification of the '
+        'leading causal hypothesis, replication across independent seeds and '
+        'cohort sizes, and confirmation against the predefined module-specific '
+        'equivalence tolerances.</p></div>'
+    )
+
+
+def _validation_scope_summary(knowledge: Mapping[str, Any]) -> str:
+    identifiers = _collect_validation_identifiers(knowledge)
+    grouped: dict[str, int] = {}
+    for identifier in identifiers:
+        prefix = identifier.split(".", 1)[0]
+        grouped[prefix] = grouped.get(prefix, 0) + 1
+    labels = {
+        "ACTION": "Actionability",
+        "CLINICAL": "Clinical",
+        "EPI": "Epidemiological",
+        "SPANISH": "Spanish-context",
+        "STAT": "Statistical",
+        "STRUCT": "Structural",
+    }
+    if not grouped:
+        return (
+            '<p class="empty">No structured validation-rule coverage was '
+            'persisted.</p>'
+        )
+    cards = "".join(
+        _metric_card(labels.get(prefix, prefix), f"{count} checks")
+        for prefix, count in sorted(grouped.items())
+    )
+    return (
+        '<h3>Validation coverage</h3><div class="cards">'
+        + cards
+        + '</div>'
+    )
+
+
+def _causal_hypothesis_sentence(candidate: Mapping[str, Any]) -> str:
+    label = _research_facing_candidate_label(candidate)
+    normalized = label.casefold()
+    if "probabilistic semantics" in normalized:
+        return (
+            "The observed discrepancies are most consistent with differences "
+            "in probabilistic state-transition behaviour between the generators."
+        )
+    if "transition" in normalized:
+        return (
+            "The observed discrepancies may arise from non-equivalent state "
+            "transition behaviour between the generators."
+        )
+    if "export" in normalized or "retention" in normalized:
+        return (
+            "The observed discrepancies may arise from differences in record "
+            "construction, retention or export behaviour."
+        )
+    return (
+        f"The leading hypothesis concerns {label.lower()}, but the available "
+        "evidence does not yet establish a causal mechanism."
+    )
+
+
+
+def _technical_appendix(
+    payload: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    knowledge: Mapping[str, Any],
+    root: Mapping[str, Any],
+) -> str:
+    del validation, knowledge, root
+    artifacts = _mapping(payload.get("source_artifacts"))
+    stages = _mapping_sequence(payload.get("stage_summary"))
+    succeeded = sum(
+        str(stage.get("status") or "").casefold() == "succeeded"
+        for stage in stages
+    )
+    return (
+        '<h3>Reproducibility and provenance</h3>'
+        '<div class="cards">'
+        + _metric_card("Pipeline stages completed", f"{succeeded} / {len(stages)}")
+        + _metric_card("Hashed source artifacts", len(artifacts))
+        + _metric_card("Report schema", payload.get("schema_version"))
+        + _metric_card("Generated at", payload.get("generated_at"))
+        + '</div>'
+        '<div class="callout"><strong>Machine-readable evidence.</strong> '
+        'Complete validation, knowledge, root-cause, integrity-hash and '
+        'pipeline records are retained in the separately hashed JSON artifacts. '
+        'They are intentionally not reproduced in the research-facing HTML.</div>'
+    )
+
 
 def _render_stage_table(stages: Sequence[Mapping[str, Any]]) -> str:
     if not stages:return '<p class="empty">No stage execution summary was available.</p>'

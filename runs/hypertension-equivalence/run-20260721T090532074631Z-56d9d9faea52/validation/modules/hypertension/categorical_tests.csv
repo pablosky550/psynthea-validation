@@ -1,0 +1,3 @@
+module_name,scope,domain,test_name,statistic,p_value,effect_size,significant,n_synthea,n_psynthea,notes
+hypertension,categorical,gender,chi_square,0.7343941248470013,0.391462579007701,0.06059678724350827,False,100,100,
+hypertension,categorical,encounter_class,chi_square,158.69971152951393,3.497315430665815e-34,0.31183724969917764,True,939,693,

@@ -1,0 +1,24 @@
+Exception in thread "main" java.lang.RuntimeException: Poverty Eligibility File 'payers/eligibility_input_files/medicaid_income_eligibilities.csv' does not contain state '20241231'.
+	at org.mitre.synthea.world.agents.behaviors.planeligibility.PovertyMultiplierFileEligibility.buildPovertyMultiplierEligibility(PovertyMultiplierFileEligibility.java:92)
+	at org.mitre.synthea.world.agents.behaviors.planeligibility.PovertyMultiplierFileEligibility.<init>(PovertyMultiplierFileEligibility.java:31)
+	at org.mitre.synthea.world.agents.behaviors.planeligibility.CSVEligibility.lambda$buildEligibilityOptions$6(CSVEligibility.java:117)
+	at org.mitre.synthea.world.agents.behaviors.planeligibility.CSVEligibility.<init>(CSVEligibility.java:68)
+	at org.mitre.synthea.world.agents.behaviors.planeligibility.PlanEligibilityFinder.buildPlanEligibilities(PlanEligibilityFinder.java:72)
+	at org.mitre.synthea.world.agents.PayerManager.loadPayers(PayerManager.java:98)
+	at org.mitre.synthea.engine.Generator.init(Generator.java:322)
+	at org.mitre.synthea.engine.Generator.<init>(Generator.java:265)
+	at App.main(App.java:284)
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':run'.
+> Process 'command '/Library/Java/JavaVirtualMachines/temurin-25.jdk/Contents/Home/bin/java'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1s

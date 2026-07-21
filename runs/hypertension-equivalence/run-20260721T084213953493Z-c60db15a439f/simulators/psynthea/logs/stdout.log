@@ -1,0 +1,11 @@
+Generated 100 patient(s) using modules: Hypertension
+Format: csv
+Output written to /Users/pgt01/IRYCIS/psynthea-validation/runs/hypertension-equivalence/run-20260721T084213953493Z-c60db15a439f/simulators/psynthea/raw/psynthea
+  patients.csv: 100 row(s)
+  encounters.csv: 693 row(s)
+  conditions.csv: 48 row(s)
+  medications.csv: 0 row(s)
+  observations.csv: 3465 row(s)
+  devices.csv: 0 row(s)
+  imaging_studies.csv: 0 row(s)
+  supplies.csv: 0 row(s)

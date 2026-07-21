@@ -54,9 +54,19 @@ _COHORT_FIELDS: Final = frozenset(
         "population",
         "seed",
         "modules",
+        "module_files",
         "reference_date",
         "min_age",
         "max_age",
+        "step_days",
+        "years_of_history",
+        "wellness_encounters",
+        "vitals",
+        "mortality",
+        "keystone",
+        "ground_truth",
+        "output_format",
+        "profile_file",
         "parameters",
     }
 )
@@ -145,7 +155,8 @@ def parse_experiment_config(
     base = _base_directory(base_directory)
 
     cohort = _parse_cohort(
-        _required(root, "cohort", "configuration")
+        _required(root, "cohort", "configuration"),
+        base_directory=base,
     )
 
     simulator_payloads = _sequence(
@@ -228,6 +239,9 @@ def experiment_config_to_dict(
             "population": config.cohort.population,
             "seed": config.cohort.seed,
             "modules": list(config.cohort.modules),
+            "module_files": [
+                str(path) for path in config.cohort.module_files
+            ],
             "reference_date": (
                 config.cohort.reference_date.isoformat()
                 if config.cohort.reference_date is not None
@@ -235,6 +249,19 @@ def experiment_config_to_dict(
             ),
             "min_age": config.cohort.min_age,
             "max_age": config.cohort.max_age,
+            "step_days": config.cohort.step_days,
+            "years_of_history": config.cohort.years_of_history,
+            "wellness_encounters": config.cohort.wellness_encounters,
+            "vitals": config.cohort.vitals,
+            "mortality": config.cohort.mortality,
+            "keystone": config.cohort.keystone,
+            "ground_truth": config.cohort.ground_truth,
+            "output_format": config.cohort.output_format,
+            "profile_file": (
+                str(config.cohort.profile_file)
+                if config.cohort.profile_file is not None
+                else None
+            ),
             "parameters": _plain_value(config.cohort.parameters),
         },
         "simulators": [
@@ -277,9 +304,19 @@ def dump_experiment_config(
     ) + "\n"
 
 
-def _parse_cohort(payload: Any) -> CohortConfig:
+def _parse_cohort(
+    payload: Any,
+    *,
+    base_directory: Path | None,
+) -> CohortConfig:
     cohort = _mapping(payload, "configuration.cohort")
     _reject_unknown(cohort, _COHORT_FIELDS, "configuration.cohort")
+
+    if "modules" not in cohort and "module_files" not in cohort:
+        raise ExperimentConfigurationError(
+            "configuration.cohort requires at least one of: "
+            "modules or module_files."
+        )
 
     reference_date = cohort.get("reference_date")
     if reference_date is not None:
@@ -296,6 +333,31 @@ def _parse_cohort(payload: Any) -> CohortConfig:
                 "ISO-8601 date."
             ) from exc
 
+    module_files = tuple(
+        _resolve_path(
+            item,
+            base_directory=base_directory,
+            field_name=f"configuration.cohort.module_files[{index}]",
+        )
+        for index, item in enumerate(
+            _sequence(
+                cohort.get("module_files", []),
+                "configuration.cohort.module_files",
+            )
+        )
+    )
+
+    profile_file_value = cohort.get("profile_file")
+    profile_file = (
+        _resolve_path(
+            profile_file_value,
+            base_directory=base_directory,
+            field_name="configuration.cohort.profile_file",
+        )
+        if profile_file_value is not None
+        else None
+    )
+
     try:
         return CohortConfig(
             population=_required(
@@ -310,11 +372,7 @@ def _parse_cohort(payload: Any) -> CohortConfig:
             ),
             modules=tuple(
                 _sequence(
-                    _required(
-                        cohort,
-                        "modules",
-                        "configuration.cohort",
-                    ),
+                    cohort.get("modules", []),
                     "configuration.cohort.modules",
                 )
             ),
@@ -325,6 +383,19 @@ def _parse_cohort(payload: Any) -> CohortConfig:
                 cohort.get("parameters", {}),
                 "configuration.cohort.parameters",
             ),
+            module_files=module_files,
+            step_days=cohort.get("step_days"),
+            years_of_history=cohort.get("years_of_history"),
+            wellness_encounters=cohort.get(
+                "wellness_encounters",
+                False,
+            ),
+            vitals=cohort.get("vitals", False),
+            mortality=cohort.get("mortality", False),
+            keystone=cohort.get("keystone", False),
+            ground_truth=cohort.get("ground_truth", False),
+            output_format=cohort.get("output_format", "csv"),
+            profile_file=profile_file,
         )
     except (TypeError, ValueError) as exc:
         raise ExperimentConfigurationError(

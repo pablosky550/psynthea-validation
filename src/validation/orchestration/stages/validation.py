@@ -216,7 +216,25 @@ class ValidationStageHandler:
             Mapping[str, Any]
         ] = []
 
-        for module_name in context.config.cohort.modules:
+        configured_module_names = tuple(
+            dict.fromkeys(
+                (
+                    *context.config.cohort.modules,
+                    *(
+                        module_file.stem
+                        for module_file in context.config.cohort.module_files
+                    ),
+                )
+            )
+        )
+
+        if not configured_module_names:
+            raise ValidationStageError(
+                "Experiment cohort does not configure any modules "
+                "through 'modules' or 'module_files'."
+            )
+
+        for module_name in configured_module_names:
             module_settings = _module_settings(
                 settings,
                 module_name,
@@ -326,7 +344,7 @@ class ValidationStageHandler:
                     settings["top_n_codes"]
                 ),
                 "modules": list(
-                    context.config.cohort.modules
+                    configured_module_names
                 ),
             },
             "cohorts": {

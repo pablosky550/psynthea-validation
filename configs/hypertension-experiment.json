@@ -4,10 +4,11 @@
   "name": "Hypertension equivalence: Synthea vs psynthea",
   "description": "Deterministic end-to-end scientific validation of the hypertension module.",
   "cohort": {
-    "population": 100,
+  "population": 100,
     "seed": 42,
-    "modules": [
-      "hypertension"
+    "modules": [],
+    "module_files": [
+      "../../synthea/src/main/resources/modules/hypertension.json"
     ],
     "reference_date": "2024-12-31",
     "min_age": 18,
@@ -16,7 +17,15 @@
       "profile": {
         "country": "ES"
       }
-    }
+    },
+    "step_days": 1,
+    "years_of_history": 10,
+    "wellness_encounters": true,
+    "vitals": true,
+    "mortality": true,
+    "keystone": true,
+    "ground_truth": false,
+    "output_format": "csv"
   },
   "simulators": [
     {
@@ -53,27 +62,6 @@
         "PYTHONHASHSEED": "0"
       },
       "arguments": {
-        "command_arguments": [
-          "generate",
-          "-p",
-          "{population}",
-          "-m",
-          "{modules}",
-          "-d",
-          "/Users/pgt01/IRYCIS/synthea/src/main/resources/modules",
-          "-o",
-          "{output_dir}",
-          "--seed",
-          "{seed}",
-          "--format",
-          "csv",
-          "--min-age",
-          "{min_age}",
-          "--max-age",
-          "{max_age}",
-          "--end-date",
-          "{reference_date}"
-        ],
         "discover_outputs": true
       },
       "expected_output_files": [

@@ -112,7 +112,17 @@ def _resolve_module_name(
     config: ExperimentConfig,
     value: str | None,
 ) -> str:
-    configured = tuple(config.cohort.modules)
+    configured_names = tuple(config.cohort.modules)
+    configured_files = tuple(config.cohort.module_files)
+
+    file_module_names = tuple(
+        module_file.stem
+        for module_file in configured_files
+    )
+
+    configured = tuple(
+        dict.fromkeys((*configured_names, *file_module_names))
+    )
 
     if value is None:
         if len(configured) != 1:
@@ -123,11 +133,13 @@ def _resolve_module_name(
         return configured[0]
 
     normalized = _required_text(value, "module_name")
+
     if normalized not in configured:
         raise ExperimentRunnerError(
             f"module_name {normalized!r} is not configured for experiment "
-            f"{config.id!r}."
+            f"{config.id!r}. Configured modules: {configured!r}."
         )
+
     return normalized
 
 

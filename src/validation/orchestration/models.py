@@ -339,6 +339,36 @@ def _optional_non_negative_integer(value: int | None, field_name: str) -> int | 
     return None if value is None else _require_non_negative_integer(value, field_name)
 
 
+def _optional_positive_integer(value: int | None, field_name: str) -> int | None:
+    return None if value is None else _require_positive_integer(value, field_name)
+
+
+def _require_boolean(value: bool, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a boolean.")
+    return value
+
+
+def _normalize_path_tuple(
+    values: Sequence[Path | str],
+    field_name: str,
+    *,
+    relative: bool = False,
+) -> tuple[Path, ...]:
+    if isinstance(values, (str, bytes, PurePath)) or not isinstance(values, Sequence):
+        raise TypeError(f"{field_name} must be a sequence of paths.")
+
+    normalizer = _normalize_relative_path if relative else _normalize_path
+    normalized: list[Path] = []
+    seen: set[Path] = set()
+    for index, value in enumerate(values):
+        path = normalizer(value, f"{field_name}[{index}]")
+        if path not in seen:
+            normalized.append(path)
+            seen.add(path)
+    return tuple(normalized)
+
+
 def _require_positive_number(value: float, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"{field_name} must be numeric.")
@@ -418,7 +448,15 @@ def _validate_execution_window(
 
 @dataclass(frozen=True, slots=True)
 class CohortConfig:
-    """Scientific cohort parameters shared by both simulator executions."""
+    """Scientific cohort parameters shared by both simulator executions.
+
+    Fields common to both simulators remain first. Psynthea-specific compatibility
+    controls are explicit, immutable and optional so legacy experiment files retain
+    their previous behaviour until those controls are deliberately enabled.
+
+    ``parameters`` remains in its historical positional location for backwards
+    compatibility. New code should instantiate this model with keyword arguments.
+    """
 
     population: int
     seed: int
@@ -428,17 +466,46 @@ class CohortConfig:
     max_age: int | None = None
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
+    # Optional module sources and generation controls introduced for Psynthea 0.1.0.
+    module_files: tuple[Path, ...] = ()
+    step_days: int | None = None
+    years_of_history: int | None = None
+    wellness_encounters: bool = False
+    vitals: bool = False
+    mortality: bool = False
+    keystone: bool = False
+    ground_truth: bool = False
+    output_format: str = "csv"
+    profile_file: Path | None = None
+
     def __post_init__(self) -> None:
-        object.__setattr__(self, "population", _require_positive_integer(self.population, "population"))
+        object.__setattr__(
+            self,
+            "population",
+            _require_positive_integer(self.population, "population"),
+        )
+
         if isinstance(self.seed, bool) or not isinstance(self.seed, int):
             raise TypeError("seed must be an integer.")
         if not -(2**63) <= self.seed <= (2**63 - 1):
             raise ValueError("seed must fit in a signed 64-bit integer.")
-        object.__setattr__(
-            self,
+
+        modules = _normalize_text_tuple(
+            self.modules,
             "modules",
-            _normalize_text_tuple(self.modules, "modules", identifiers=True, allow_empty=False),
+            identifiers=True,
+            allow_empty=True,
         )
+        module_files = _normalize_path_tuple(
+            self.module_files,
+            "module_files",
+            relative=False,
+        )
+        if not modules and not module_files:
+            raise ValueError("At least one module or module_file must be configured.")
+        object.__setattr__(self, "modules", modules)
+        object.__setattr__(self, "module_files", module_files)
+
         object.__setattr__(
             self,
             "reference_date",
@@ -454,10 +521,49 @@ class CohortConfig:
             "max_age",
             _optional_non_negative_integer(self.max_age, "max_age"),
         )
-        object.__setattr__(self, "parameters", _freeze_mapping(self.parameters, "parameters"))
-
         if self.min_age is not None and self.max_age is not None and self.min_age > self.max_age:
             raise ValueError("min_age must not exceed max_age.")
+
+        object.__setattr__(
+            self,
+            "step_days",
+            _optional_positive_integer(self.step_days, "step_days"),
+        )
+        object.__setattr__(
+            self,
+            "years_of_history",
+            _optional_positive_integer(self.years_of_history, "years_of_history"),
+        )
+
+        for field_name in (
+            "wellness_encounters",
+            "vitals",
+            "mortality",
+            "keystone",
+            "ground_truth",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _require_boolean(getattr(self, field_name), field_name),
+            )
+
+        output_format = _require_identifier(self.output_format, "output_format").lower()
+        if output_format not in {"csv", "omop"}:
+            raise ValueError("output_format must be either 'csv' or 'omop'.")
+        object.__setattr__(self, "output_format", output_format)
+
+        profile_file = (
+            None
+            if self.profile_file is None
+            else _normalize_path(self.profile_file, "profile_file")
+        )
+        object.__setattr__(self, "profile_file", profile_file)
+        object.__setattr__(
+            self,
+            "parameters",
+            _freeze_mapping(self.parameters, "parameters"),
+        )
 
 
 @dataclass(frozen=True, slots=True)

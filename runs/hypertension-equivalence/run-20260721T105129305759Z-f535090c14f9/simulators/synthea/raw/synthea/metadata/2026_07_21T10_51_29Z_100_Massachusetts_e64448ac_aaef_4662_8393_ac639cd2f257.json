@@ -1,0 +1,20 @@
+{
+  "runID": "e64448ac-aaef-4662-8393-ac639cd2f257",
+  "seed": 42,
+  "clinicianSeed": 1784631089891,
+  "referenceTime": "20241231",
+  "endTime": "20260721",
+  "version": "master-branch-latest\n",
+  "patientCount": 100,
+  "providerCount": 1327,
+  "payerCount": 9,
+  "javaVersion": "25.0.3",
+  "generate.thread_pool_size": -1,
+  "generatorThreads": 8,
+  "runStartTime": "2026-07-21T10:51:29Z",
+  "runTimeInSeconds": 4,
+  "exporter.years_of_history": "10",
+  "age": "18-90",
+  "state": "Massachusetts",
+  "modules": "hypertension"
+}

@@ -1324,8 +1324,24 @@ def _validate_validation_payload(
         )
 
     configured_modules = tuple(
-        context.config.cohort.modules
+        dict.fromkeys(
+            (
+                *context.config.cohort.modules,
+                *(
+                    module_file.stem
+                    for module_file
+                    in context.config.cohort.module_files
+                ),
+            )
+        )
     )
+
+    if not configured_modules:
+        raise KnowledgeStageError(
+            "ExperimentConfig must define at least "
+            "one module through 'modules' or "
+            "'module_files'."
+        )
 
     observed_modules = tuple(
         module.get("module_name")
@@ -1337,7 +1353,9 @@ def _validate_validation_payload(
     if observed_modules != configured_modules:
         raise KnowledgeStageError(
             "Validation-result module order does "
-            "not match ExperimentConfig."
+            "not match ExperimentConfig: "
+            f"expected {configured_modules!r}, "
+            f"observed {observed_modules!r}."
         )
 
 

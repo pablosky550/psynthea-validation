@@ -29,6 +29,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from enum import Enum
 from hashlib import sha256
 import os
 from pathlib import Path, PurePath
@@ -87,23 +88,85 @@ _ALLOWED_PLACEHOLDERS: Final = frozenset(
         "seed",
         "modules",
         "module",
+        "module_files",
         "output_dir",
         "reference_date",
         "min_age",
         "max_age",
+        "step_days",
+        "years_of_history",
+        "output_format",
+        "profile_file",
+    }
+)
+
+
+class _ArgumentMode(str, Enum):
+    """Emission strategy for one declarative CLI argument."""
+
+    VALUE = "value"
+    FLAG = "flag"
+    REPEAT = "repeat"
+
+
+@dataclass(frozen=True, slots=True)
+class _ArgumentSpec:
+    """Declarative mapping from one cohort field to simulator CLI tokens."""
+
+    field: str
+    option: str | None
+    mode: _ArgumentMode = _ArgumentMode.VALUE
+    required: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.field, str) or not self.field.strip():
+            raise ValueError("argument spec field must be a non-empty string.")
+        if self.option is not None and (
+            not isinstance(self.option, str) or not self.option.strip()
+        ):
+            raise ValueError(
+                f"argument spec {self.field}.option must be a non-empty string or None."
+            )
+        if not isinstance(self.mode, _ArgumentMode):
+            raise TypeError("argument spec mode must be an _ArgumentMode member.")
+        if not isinstance(self.required, bool):
+            raise TypeError("argument spec required must be a boolean.")
+
+
+_CLI_PROFILES: Final[Mapping[SimulatorKind, tuple[_ArgumentSpec, ...]]] = MappingProxyType(
+    {
+        SimulatorKind.SYNTHEA: (
+            _ArgumentSpec("population", "-p", required=True),
+            _ArgumentSpec("seed", "-s", required=True),
+            _ArgumentSpec("modules", "-m", required=True),
+        ),
+        SimulatorKind.PSYNTHEA: (
+            _ArgumentSpec("subcommand", None, required=True),
+            _ArgumentSpec("population", "-p", required=True),
+            _ArgumentSpec("modules", "-m", _ArgumentMode.REPEAT),
+            _ArgumentSpec("module_files", "--module-file", _ArgumentMode.REPEAT),
+            _ArgumentSpec("output_dir", "-o", required=True),
+            _ArgumentSpec("seed", "--seed", required=True),
+            _ArgumentSpec("output_format", "--format", required=True),
+            _ArgumentSpec("reference_date", "--end-date"),
+            _ArgumentSpec("min_age", "--min-age"),
+            _ArgumentSpec("max_age", "--max-age"),
+            _ArgumentSpec("step_days", "--step-days"),
+            _ArgumentSpec("years_of_history", "--years-of-history"),
+            _ArgumentSpec("profile_file", "--profile-file"),
+            _ArgumentSpec("ground_truth", "--ground-truth", _ArgumentMode.FLAG),
+            _ArgumentSpec("wellness_encounters", "--wellness-encounters", _ArgumentMode.FLAG),
+            _ArgumentSpec("vitals", "--vitals", _ArgumentMode.FLAG),
+            _ArgumentSpec("mortality", "--mortality", _ArgumentMode.FLAG),
+            _ArgumentSpec("keystone", "--keystone", _ArgumentMode.FLAG),
+        ),
     }
 )
 
 _DEFAULT_ARGUMENT_TEMPLATES: Final[Mapping[SimulatorKind, tuple[str, ...]]] = MappingProxyType(
     {
-        SimulatorKind.SYNTHEA: (
-            "-p",
-            "{population}",
-            "-s",
-            "{seed}",
-            "-m",
-            "{modules}",
-        ),
+        # Preserved exclusively for backwards-compatible custom-template inspection.
+        SimulatorKind.SYNTHEA: ("-p", "{population}", "-s", "{seed}", "-m", "{modules}"),
         SimulatorKind.PSYNTHEA: (
             "generate",
             "-p",
@@ -188,22 +251,134 @@ def _cohort_context(
     *,
     output_directory: Path,
     module_separator: str,
-) -> Mapping[str, str | None]:
-    modules = module_separator.join(cohort.modules)
+) -> Mapping[str, Any]:
+    """Build the complete deterministic CLI context for both simulators.
+
+    ``modules`` is the scalar representation used by Synthea and custom
+    templates. When modules are configured only through ``module_files``, the
+    logical names are derived from their file stems. ``module_values`` remains
+    restricted to explicitly configured module names so Psynthea does not emit
+    both ``-m`` and ``--module-file`` for the same module.
+    """
+
+    module_values = tuple(dict.fromkeys(cohort.modules))
+    module_files = tuple(
+        _path_text(Path(module_file))
+        for module_file in dict.fromkeys(cohort.module_files)
+    )
+
+    logical_modules = module_values or tuple(
+        Path(module_file).stem for module_file in module_files
+    )
+    modules = module_separator.join(dict.fromkeys(logical_modules))
+
+    profile_file = getattr(cohort, "profile_file", None)
+    if profile_file is None:
+        profile_file = cohort.parameters.get("profile_file")
+
     return MappingProxyType(
         {
             "population": str(cohort.population),
             "seed": str(cohort.seed),
             "modules": modules,
             "module": modules,
+            "module_values": module_values,
+            "module_files": module_files,
             "output_dir": _path_text(output_directory),
             "reference_date": (
-                cohort.reference_date.isoformat() if cohort.reference_date is not None else None
+                cohort.reference_date.isoformat()
+                if cohort.reference_date is not None
+                else None
             ),
-            "min_age": str(cohort.min_age) if cohort.min_age is not None else None,
-            "max_age": str(cohort.max_age) if cohort.max_age is not None else None,
+            "min_age": (
+                str(cohort.min_age)
+                if cohort.min_age is not None
+                else None
+            ),
+            "max_age": (
+                str(cohort.max_age)
+                if cohort.max_age is not None
+                else None
+            ),
+            "step_days": str(cohort.step_days),
+            "years_of_history": str(cohort.years_of_history),
+            "output_format": cohort.output_format,
+            "profile_file": (
+                _path_text(Path(profile_file))
+                if profile_file is not None
+                else None
+            ),
+            "ground_truth": cohort.ground_truth,
+            "wellness_encounters": cohort.wellness_encounters,
+            "vitals": cohort.vitals,
+            "mortality": cohort.mortality,
+            "keystone": cohort.keystone,
         }
     )
+
+
+def _build_profile_arguments(
+    simulator: SimulatorKind,
+    context: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Emit deterministic CLI tokens from the simulator's declarative profile."""
+
+    try:
+        specs = _CLI_PROFILES[simulator]
+    except KeyError as exc:
+        raise RunnerConfigurationError(
+            f"No CLI profile is registered for {simulator.value!r}."
+        ) from exc
+
+    rendered: list[str] = []
+    for spec in specs:
+        lookup_field = "module_values" if spec.field == "modules" and spec.mode is _ArgumentMode.REPEAT else spec.field
+        value = context.get(lookup_field)
+
+        if spec.mode is _ArgumentMode.FLAG:
+            if not isinstance(value, bool):
+                raise RunnerConfigurationError(
+                    f"CLI flag source {spec.field!r} must be boolean."
+                )
+            if value:
+                assert spec.option is not None
+                rendered.append(spec.option)
+            continue
+
+        if spec.mode is _ArgumentMode.REPEAT:
+            if value is None:
+                values: tuple[Any, ...] = ()
+            elif isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+                raise RunnerConfigurationError(
+                    f"CLI repeated source {spec.field!r} must be a sequence."
+                )
+            else:
+                values = tuple(value)
+
+            if spec.required and not values:
+                raise RunnerConfigurationError(
+                    f"CLI field {spec.field!r} is required but empty."
+                )
+            for index, item in enumerate(values):
+                token = _require_text(item, f"{spec.field}[{index}]")
+                if spec.option is not None:
+                    rendered.append(spec.option)
+                rendered.append(token)
+            continue
+
+        if value is None:
+            if spec.required:
+                raise RunnerConfigurationError(
+                    f"CLI field {spec.field!r} is required but unset."
+                )
+            continue
+
+        token = _require_text(value, spec.field)
+        if spec.option is not None:
+            rendered.append(spec.option)
+        rendered.append(token)
+
+    return tuple(rendered)
 
 
 def _placeholder_names(template: str) -> tuple[str, ...]:
@@ -242,7 +417,7 @@ def _placeholder_names(template: str) -> tuple[str, ...]:
 
 def _render_template(
     template: Sequence[str],
-    context: Mapping[str, str | None],
+    context: Mapping[str, Any],
 ) -> tuple[str, ...]:
     rendered: list[str] = []
     for index, argument in enumerate(template):
@@ -254,7 +429,7 @@ def _render_template(
                 + ", ".join(unknown)
                 + "."
             )
-        missing = sorted(name for name in names if context[name] is None)
+        missing = sorted(name for name in names if context.get(name) is None)
         if missing:
             raise RunnerConfigurationError(
                 f"command argument {index} requires unset cohort field(s): "
@@ -265,7 +440,10 @@ def _render_template(
         value = argument
         for name in names:
             replacement = context[name]
-            assert replacement is not None
+            if not isinstance(replacement, str):
+                raise RunnerConfigurationError(
+                    f"Placeholder {name!r} does not resolve to a scalar string."
+                )
             value = value.replace("{" + name + "}", replacement)
         value = value.replace("{{", "{").replace("}}", "}")
         rendered.append(_require_text(value, f"rendered command argument {index}"))
@@ -414,17 +592,27 @@ class SimulatorRunner(ABC):
             raise RunnerConfigurationError("module_separator must not contain whitespace.")
 
         raw_template = options.get(_ARGUMENT_TEMPLATE_KEY)
-        template = (
-            self.default_argument_template()
-            if raw_template is None
-            else _normalize_template(raw_template)
+        context = dict(
+            _cohort_context(
+                experiment.cohort,
+                output_directory=output_directory,
+                module_separator=module_separator,
+            )
         )
-        context = _cohort_context(
-            experiment.cohort,
-            output_directory=output_directory,
-            module_separator=module_separator,
-        )
-        dynamic_arguments = _render_template(template, context)
+
+        if self.kind is SimulatorKind.PSYNTHEA:
+            context["subcommand"] = "generate"
+
+        if raw_template is None:
+            dynamic_arguments = _build_profile_arguments(self.kind, context)
+        else:
+            # Explicit templates retain the original strict scalar-placeholder
+            # contract for backwards compatibility.
+            dynamic_arguments = _render_template(
+                _normalize_template(raw_template),
+                context,
+            )
+
 
         inherit_environment = _require_bool(
             options.get(_INHERIT_ENVIRONMENT_KEY, True),
@@ -584,6 +772,11 @@ class SimulatorRunner(ABC):
                 "subprocess_return_code": subprocess_return_code,
                 "expected_output_count": len(plan.expected_output_files),
                 "discovered_output_count": len(output_artifacts),
+                "command_profile": (
+                    "custom_template"
+                    if self.config.arguments.get(_ARGUMENT_TEMPLATE_KEY) is not None
+                    else f"{self.kind.value}:declarative-v1"
+                ),
             },
         )
 

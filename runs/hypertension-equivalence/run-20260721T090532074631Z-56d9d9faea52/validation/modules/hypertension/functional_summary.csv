@@ -1,0 +1,2 @@
+module_name,status,status_reason,synthea_functional,psynthea_functional,valid_for_comparison,blocking_issue_count,warning_count,synthea_condition_count,psynthea_condition_count,synthea_observation_count,psynthea_observation_count,mean_distributional_similarity,mean_jensen_shannon_divergence
+hypertension,partially_comparable,"The module produced comparable core signal, but optional domains or warnings require restricted interpretation.",True,True,True,0,1,29,48,3227,3465,0.625,0.48681032355705295
