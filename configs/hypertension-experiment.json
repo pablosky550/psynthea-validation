@@ -6,10 +6,11 @@
   "cohort": {
   "population": 100,
     "seed": 42,
-    "modules": [],
-    "module_files": [
-      "../../synthea/src/main/resources/modules/hypertension.json"
+    "modules_dir": "../resources/synthea/modules",
+    "modules": [
+      "hypertension"
     ],
+    "module_files": [],
     "reference_date": "2024-12-31",
     "min_age": 18,
     "max_age": 90,

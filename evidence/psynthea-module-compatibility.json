@@ -1,0 +1,791 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-22T11:30:55.669895+00:00",
+  "producer": {
+    "name": "audit_psynthea_module_compatibility",
+    "version": "1.0.0"
+  },
+  "loader": "psynthea.compat.synthea_json.load_module_file",
+  "modules_dir": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules",
+  "summary": {
+    "root_modules": 85,
+    "compatible": 83,
+    "incompatible": 2,
+    "coverage": 0.9764705882352941,
+    "failure_counts": {
+      "'Active Medication' condition without 'codes'": 1,
+      "state type 'Physiology' (state 'ECG_Sim')": 1
+    }
+  },
+  "compatible_modules": [
+    "AIS_From_School_Screening_to_SOSORT_Recommendations",
+    "acute_myeloid_leukemia",
+    "allergic_rhinitis",
+    "allergies",
+    "anemia___unknown_etiology",
+    "appendicitis",
+    "asthma",
+    "atopy",
+    "atrial_fibrillation",
+    "attention_deficit_disorder",
+    "bone_marrow_transplant",
+    "breast_cancer",
+    "bronchitis",
+    "cerebral_palsy",
+    "chronic_kidney_disease",
+    "colorectal_cancer",
+    "congestive_heart_failure",
+    "contraceptive_maintenance",
+    "contraceptives",
+    "copd",
+    "covid19",
+    "cystic_fibrosis",
+    "dementia",
+    "dental_and_oral_examination",
+    "dentures",
+    "dermatitis",
+    "diabetic_retinopathy_treatment",
+    "dialysis",
+    "ear_infections",
+    "epilepsy",
+    "female_reproduction",
+    "fibromyalgia",
+    "food_allergies",
+    "gout",
+    "hiv_care",
+    "hiv_diagnosis",
+    "home_health_treatment",
+    "home_hospice_snf",
+    "homelessness",
+    "hospice_treatment",
+    "hypertension",
+    "hypothyroidism",
+    "injuries",
+    "kidney_transplant",
+    "lung_cancer",
+    "lupus",
+    "mTBI",
+    "med_rec",
+    "mend_program",
+    "metabolic_syndrome_care",
+    "metabolic_syndrome_disease",
+    "myocardial_infarction",
+    "opioid_addiction",
+    "osteoarthritis",
+    "osteoporosis",
+    "pregnancy",
+    "prescribing_opioids_for_chronic_pain_and_treatment_of_oud",
+    "rheumatoid_arthritis",
+    "self_harm",
+    "sepsis",
+    "sexual_activity",
+    "sinusitis",
+    "sleep_apnea",
+    "spina_bifida",
+    "stable_ischemic_heart_disease",
+    "stroke",
+    "total_joint_replacement",
+    "trigger_bone_marrow_transplant",
+    "urinary_tract_infections",
+    "veteran",
+    "veteran_hyperlipidemia",
+    "veteran_lung_cancer",
+    "veteran_mdd",
+    "veteran_prostate_cancer",
+    "veteran_ptsd",
+    "veteran_self_harm",
+    "veteran_substance_abuse_conditions",
+    "veteran_substance_abuse_treatment",
+    "vhd_aortic",
+    "vhd_mitral",
+    "vhd_pulmonic",
+    "vhd_tricuspid",
+    "wellness_encounters"
+  ],
+  "incompatible_modules": [
+    "gallstones",
+    "sore_throat"
+  ],
+  "results": [
+    {
+      "module": "AIS_From_School_Screening_to_SOSORT_Recommendations",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/AIS_From_School_Screening_to_SOSORT_Recommendations.json",
+      "sha256": "8f8d66afcb43ba4fa65340b2da399b020c420d8877b870de95e79535cd5ab711",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "acute_myeloid_leukemia",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/acute_myeloid_leukemia.json",
+      "sha256": "f69d8ea58ef06a73054a03fad6e3637dfc3032baae9e4541f981674d51d4d31b",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "allergic_rhinitis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/allergic_rhinitis.json",
+      "sha256": "3603f7f195b7a1c1bc2678bdcd23c9236b59a028e73b35cfcfc02c837d76cea7",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "allergies",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/allergies.json",
+      "sha256": "a3b1d6af42f31336047d7ca3e31e9a207e31237d2e6398cd0086aa8723db7b60",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "anemia___unknown_etiology",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/anemia___unknown_etiology.json",
+      "sha256": "e954b7cb1fe81b301726baa82d5fa83124f64e052f100ebb87a0a6c5d5e5c896",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "appendicitis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/appendicitis.json",
+      "sha256": "2bdb7d712c146e04fb2a0b2e10452f38930e055e20e63410be0c4d8d59a1d876",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "asthma",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/asthma.json",
+      "sha256": "bb25bb3581e42f66898251f88a1c17f279b4c91f8503aca006a22cacc1ff10cd",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "atopy",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/atopy.json",
+      "sha256": "221f093218689a02a6b9a7e753681631893755c25ad6b6b109fe8bb657fe5b35",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "atrial_fibrillation",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/atrial_fibrillation.json",
+      "sha256": "9aea15013a80b65698edf86af58d25cb29409f8f45fdbd9a9825c130a411b1c1",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "attention_deficit_disorder",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/attention_deficit_disorder.json",
+      "sha256": "6d952a55104f99a97696c1cc59ec1b328b3f1dabe87937ecab33f6846e05ef9f",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "bone_marrow_transplant",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/bone_marrow_transplant.json",
+      "sha256": "ec50d0a7b6cef3f7de2c23fd472b4f5569a4ae61effabf94e767cc94c4a7d730",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "breast_cancer",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/breast_cancer.json",
+      "sha256": "11a57b83ad166097fa3d9e2c63aedbcf8c1d0b70067322ec0565499b77e914a6",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "bronchitis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/bronchitis.json",
+      "sha256": "ed1a28c344732eba4d255d43a2dc4ad09e2bacb664698d548e842af3281ffc56",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "cerebral_palsy",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/cerebral_palsy.json",
+      "sha256": "46fb83018a2799ac6a55a2e494eabe9c24c88da062f0e2038c90ed529ddf50dd",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "chronic_kidney_disease",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/chronic_kidney_disease.json",
+      "sha256": "1644f1642070eff174a22e4f065be3b6ccd5fe6daabe00b88199de66fadd52b5",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "colorectal_cancer",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/colorectal_cancer.json",
+      "sha256": "10a2e4574332650e0bf0e6f466390c704111e525be6e425f85a87fdcccc74e51",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "congestive_heart_failure",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/congestive_heart_failure.json",
+      "sha256": "e363de06f7eccb3fd817aa0f749601646f625f0f0ed55729d76c9c601c762776",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "contraceptive_maintenance",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/contraceptive_maintenance.json",
+      "sha256": "f0831407a8221e0be3bc1d9179c614a5ee5f3adf6cd5d2026323eb0de2798ae0",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "contraceptives",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/contraceptives.json",
+      "sha256": "6bcafe3934917e4239fd5ba0d060d53df3183f0c775b82f2b63fa7d13aae4b64",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "copd",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/copd.json",
+      "sha256": "003545c593c4b2587424f46863b3f4bac4f42aa881672c6256c97d5d2e8187f3",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "covid19",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/covid19.json",
+      "sha256": "4888e81a6aa83b3bc4807d52aa26acacaae7107c8504b23e99b38cc53441e782",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "cystic_fibrosis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/cystic_fibrosis.json",
+      "sha256": "042713a0fe1ec34908bf018a39cfa5fbce6d2a86df7a23e572a2aafa10f62e73",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "dementia",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/dementia.json",
+      "sha256": "d20921be6ceb59e85e2a0c6ab0de4ece5b9ea7038d723b39b437cbb303d9fda1",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "dental_and_oral_examination",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/dental_and_oral_examination.json",
+      "sha256": "e679db6506b938ee39893b1e9465e87c319d0eac344cda3d8c03a1f961115b0d",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "dentures",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/dentures.json",
+      "sha256": "7f99ba90478b79b4fe56ec0012b0dacaae90f45fe86cc18ae64e836aa436d7c1",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "dermatitis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/dermatitis.json",
+      "sha256": "7ca16ec4b1a90222dc3bc130c101c7838446d9982479cfb291b8e789607bc1a4",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "diabetic_retinopathy_treatment",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/diabetic_retinopathy_treatment.json",
+      "sha256": "5f4da54d3faa3df5ee22fa9ff366e4010c6fab1b74ac1254728027cd0f6d2bc4",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "dialysis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/dialysis.json",
+      "sha256": "5ad0dd013de38ba980db472a6a1f87ad5d02b9934f87e06a0cd92e4ee1f73079",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "ear_infections",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/ear_infections.json",
+      "sha256": "55d95cb2f9b7f0160a40fe9671d484695608ee628139220564c088146e727f80",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "epilepsy",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/epilepsy.json",
+      "sha256": "d50b64e208890203cac276d3045f2ab93654969677fd41329814a0c4e270deca",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "female_reproduction",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/female_reproduction.json",
+      "sha256": "768d8374a499cd9049e71d2914206b3b59bf5294736dfbc6fce52bedcf3daae4",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "fibromyalgia",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/fibromyalgia.json",
+      "sha256": "c36d90950f7ccc5247d67db198c6d7bf43bc2c49efdaca36bd78f79cea050668",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "food_allergies",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/food_allergies.json",
+      "sha256": "038c981f29f6e8090412c4429c0df7d6476c12373d9a951f301680e4540f08da",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "gallstones",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/gallstones.json",
+      "sha256": "db8618cafacaaf325c11fed5e6ad1a0194c9230cb8267d6a322e487fab134a53",
+      "compatible": false,
+      "error_type": "psynthea.compat.synthea_json.NotSupportedError",
+      "error_message": "state type 'Physiology' (state 'ECG_Sim')"
+    },
+    {
+      "module": "gout",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/gout.json",
+      "sha256": "d42af34b572a21659a94c2e1f04e7dd409404df5eb996eaa837d0683aa4de98c",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "hiv_care",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/hiv_care.json",
+      "sha256": "3b870b967c83f3e9014daef885475b2b8c967a6287f64c33eebc1e94d93e6228",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "hiv_diagnosis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/hiv_diagnosis.json",
+      "sha256": "d9e0b7362c254fdf2fd94c201911efcc233c5d88871e28d78b6170cf6386b97b",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "home_health_treatment",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/home_health_treatment.json",
+      "sha256": "6d1503c451041fcec750333680489c29b2f9ab268048ee110c77a1d0c5775aa0",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "home_hospice_snf",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/home_hospice_snf.json",
+      "sha256": "10ce3aa48986d5c62d9b94eff485f38e220fd48399caacd4c1ea822e3f56540a",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "homelessness",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/homelessness.json",
+      "sha256": "1a547a8f9b87d579c49387e30f4037ca70baaf705036ee5c1367eb3729bfb03c",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "hospice_treatment",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/hospice_treatment.json",
+      "sha256": "7b4c89bf0baf588b6921a1df270503d5c8ef9c79e5ba391c59b53d6f474cb1de",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "hypertension",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/hypertension.json",
+      "sha256": "d0bd432d7a5743b336da9404ace2df413239332751b9b299e91b0246ced2eb64",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "hypothyroidism",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/hypothyroidism.json",
+      "sha256": "a90ae9715cd89a3252ad3057ec74b1df32e19e11b20e34655ef8449ab65728a0",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "injuries",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/injuries.json",
+      "sha256": "d772845bf1420a0bd582e510e30e8411adbd3d08c322efbaac349fbf4eaf74d5",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "kidney_transplant",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/kidney_transplant.json",
+      "sha256": "e7217924a79ab890e4fe640b07fdb959078918efa94b44fb696c186948ad895a",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "lung_cancer",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/lung_cancer.json",
+      "sha256": "402cfbc8319246ecfadd4fc837adfb4c4cd48696ba365088d599eff1a82dff9f",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "lupus",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/lupus.json",
+      "sha256": "dc0e68560dd9cb64da5711d1cb9ba40a61293b140236836d536e779f8f3f28fc",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "mTBI",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/mTBI.json",
+      "sha256": "e6e1553a1ae6360f212bd130c5552644da5dbf0ba992b5a652e491ee1d4ee209",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "med_rec",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/med_rec.json",
+      "sha256": "1698c9ddfc09d8e2fe9592b8f489c0db47b5ba070c30fa0d428a21a21e5e70c0",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "mend_program",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/mend_program.json",
+      "sha256": "8aa3a6545ae5f2d2cce5d40cbe31c937a4a36ef5b62f8513b08c6f3fe7cabbb0",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "metabolic_syndrome_care",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/metabolic_syndrome_care.json",
+      "sha256": "4262a2de56c3257c5594ffa144548620f505bc33070b13c784ce3a9303f296c5",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "metabolic_syndrome_disease",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/metabolic_syndrome_disease.json",
+      "sha256": "f0fb2754adedb936b6e8eb36bc38f348d981ef855235bfa21ffa84190dc02e2b",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "myocardial_infarction",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/myocardial_infarction.json",
+      "sha256": "eb7439021f89780929ea1f0e2f64407407e5f908c664aa998de3f1c1e0d6e966",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "opioid_addiction",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/opioid_addiction.json",
+      "sha256": "746399630d0defde0e767d9ff62e48b3a1997662fc711d1628933d385f3afdb5",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "osteoarthritis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/osteoarthritis.json",
+      "sha256": "48a3950d55b3cc14e537df500612e9366700fb830de3c234b93e9b60ee308ac1",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "osteoporosis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/osteoporosis.json",
+      "sha256": "127ef4bd9fcaf5eebc7de42b1b2ef4e1c16e401badd9f62673215cc97b56c81c",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "pregnancy",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/pregnancy.json",
+      "sha256": "2304e4ba05346c30f6d5efd4b03d3eae20060dbfa58bf293e5b20fb28e12ecff",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "prescribing_opioids_for_chronic_pain_and_treatment_of_oud",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/prescribing_opioids_for_chronic_pain_and_treatment_of_oud.json",
+      "sha256": "1cc61c0e9307ff5f9750564efadfc1d185e4ddbe32a4a3db19c6a29f769c74a9",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "rheumatoid_arthritis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/rheumatoid_arthritis.json",
+      "sha256": "e4372e26e68b66673acb017ae42f5730d2c8b982202f56af16fea8695e7a98ef",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "self_harm",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/self_harm.json",
+      "sha256": "8fe32838bc345aa8daac6d60f2928209f6eca83e40d2833dfd7664e47ec42aa8",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "sepsis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/sepsis.json",
+      "sha256": "92b8f881d96f3a6a7d55d9a05dcdf25649aaee317b7524effffbd9655199a272",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "sexual_activity",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/sexual_activity.json",
+      "sha256": "5f90cacbdf47a02c9ee87fa3edbd8d46bbfa69b0032babedcbda615dc3b901c6",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "sinusitis",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/sinusitis.json",
+      "sha256": "3f321ffadebc0731f10b6d1a59b603862fa079bd203fd7cf7d43ea230c79d0af",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "sleep_apnea",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/sleep_apnea.json",
+      "sha256": "6cb8710e0ecc1ba9b360177b9fad6bf15434dabb203bd10ffb3a6cc0463a9784",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "sore_throat",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/sore_throat.json",
+      "sha256": "946debafe925f55e3613177f4fb4d8f6f7b21cb00fbb2575396e3024b636ba34",
+      "compatible": false,
+      "error_type": "psynthea.compat.synthea_json.NotSupportedError",
+      "error_message": "'Active Medication' condition without 'codes'"
+    },
+    {
+      "module": "spina_bifida",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/spina_bifida.json",
+      "sha256": "7c3931e8cf0fb48e272c6dc801f8a4037fd23b63ca6e2c524e98d102e8d35add",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "stable_ischemic_heart_disease",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/stable_ischemic_heart_disease.json",
+      "sha256": "c689a4ee320d94c7f4dbf519f0ccaa96ab336a99ad675dac1261f5bd9d3c6ea1",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "stroke",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/stroke.json",
+      "sha256": "9c26c970d267a3b3c879b986a70d5f552d1aa94a4624d7eb088570a8c3e6ad90",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "total_joint_replacement",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/total_joint_replacement.json",
+      "sha256": "1666dfc39a3a2266ccc8c5937a0de317a4330489fb315e36b9d55c6dd6bb3d8b",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "trigger_bone_marrow_transplant",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/trigger_bone_marrow_transplant.json",
+      "sha256": "b9dc6ea67ac855d37507d58cb4adf2280b853e159c238ded768635a4c0228152",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "urinary_tract_infections",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/urinary_tract_infections.json",
+      "sha256": "18de2b8e30d41ef1770fcb10aaf5912bfdb15dbe459cec18730029a37cf9ef7b",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran.json",
+      "sha256": "9879f184cb606fa99a1edfdcb9337a0f88f8f7b6e91b9fd38571c7cc9ab4f4c3",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_hyperlipidemia",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_hyperlipidemia.json",
+      "sha256": "79586fd01410153a74987f5f2a5549079d5f73156c53fa8565a9a4c6b52dd52c",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_lung_cancer",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_lung_cancer.json",
+      "sha256": "84e474a85b39565585030773e0422a6bdfea142f15c07984da8c9425540cb082",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_mdd",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_mdd.json",
+      "sha256": "2064ffcbd27dfcad1ed24efb59c121d704eddf639f7fe5e075001b8008a5ad76",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_prostate_cancer",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_prostate_cancer.json",
+      "sha256": "c139ad49b26a0d2bdb0bd4d2d0ba03170e1a769c00abe652f7a196eabd0841f6",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_ptsd",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_ptsd.json",
+      "sha256": "a0e04e01fe3d42f91326052887d6843d83e5a992f62ee5fb18ab4bd856e1e72a",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_self_harm",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_self_harm.json",
+      "sha256": "ae5c651da3f405f7c0614577a72856d57c5310ce79eef0e13f616efa893abcea",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_substance_abuse_conditions",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_substance_abuse_conditions.json",
+      "sha256": "bd8d336377f994a59ac14bb06a82c585e5c63773ef9bd75662bedc9c2fbf440a",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "veteran_substance_abuse_treatment",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/veteran_substance_abuse_treatment.json",
+      "sha256": "269091a80c76a3e9c05e007b7a98edfb29bfc20c6dc6cda5e04c633556b47541",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "vhd_aortic",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/vhd_aortic.json",
+      "sha256": "e65512754dfa2f54f8330089753aa9bf89967ee08996ce044f068332fb5d235c",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "vhd_mitral",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/vhd_mitral.json",
+      "sha256": "dff83d8a6a24535651982a6867e9a42342a0094485529c8e31fc879130fd5786",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "vhd_pulmonic",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/vhd_pulmonic.json",
+      "sha256": "c3231a26cf5de1923c5fe560683fd631950c303fbcbb12e0a0dc23a6beae4cd4",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "vhd_tricuspid",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/vhd_tricuspid.json",
+      "sha256": "73217eb766258836ace43902cc6a87a8e4214afe07fea0841d753ccc0876e045",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    },
+    {
+      "module": "wellness_encounters",
+      "path": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules/wellness_encounters.json",
+      "sha256": "39c20f855bcbc37abc08def63187de9a0500e699989cd9ab8d5f23f1a50e7334",
+      "compatible": true,
+      "error_type": null,
+      "error_message": null
+    }
+  ]
+}

@@ -1,0 +1,1086 @@
+{
+    "config": {
+        "cohort": {
+            "ground_truth": false,
+            "keystone": true,
+            "max_age": 90,
+            "min_age": 18,
+            "module_files": [],
+            "modules": [
+                "hypertension",
+                "covid19"
+            ],
+            "modules_dir": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules",
+            "mortality": true,
+            "output_format": "csv",
+            "parameters": {
+                "profile": {
+                    "country": "ES"
+                }
+            },
+            "population": 100,
+            "profile_file": null,
+            "reference_date": "2024-12-31",
+            "seed": 42,
+            "step_days": 1,
+            "vitals": true,
+            "wellness_encounters": true,
+            "years_of_history": 10
+        },
+        "description": "Deterministic end-to-end scientific validation of the hypertension module.",
+        "id": "hypertension-equivalence",
+        "metadata": {
+            "protocol": {
+                "name": "IRYCIS Psynthea Scientific Validation",
+                "version": 1
+            },
+            "validation": {
+                "alpha": 0.05,
+                "categorical_effect_margin": 0.1,
+                "confidence_level": 0.95,
+                "continuous_effect_margin": 0.2,
+                "fdr_method": "benjamini-hochberg"
+            }
+        },
+        "name": "Hypertension equivalence: Synthea vs psynthea",
+        "output_root": "/Users/pgt01/IRYCIS/psynthea-validation/runs",
+        "report_formats": [
+            "html",
+            "json"
+        ],
+        "simulators": [
+            {
+                "arguments": {
+                    "command_arguments": [
+                        "--args=-p {population} -s {seed} -m {modules} -r 20241231 -a 18-90 --exporter.baseDirectory={output_dir} --exporter.csv.export=true --exporter.fhir.export=false"
+                    ],
+                    "discover_outputs": true
+                },
+                "command": [
+                    "./gradlew",
+                    "run"
+                ],
+                "environment": {},
+                "expected_output_files": [
+                    "csv/patients.csv",
+                    "csv/conditions.csv",
+                    "csv/encounters.csv"
+                ],
+                "kind": "synthea",
+                "output_subdirectory": "synthea",
+                "timeout_seconds": 3600.0,
+                "working_directory": "/Users/pgt01/IRYCIS/synthea"
+            },
+            {
+                "arguments": {
+                    "discover_outputs": true
+                },
+                "command": [
+                    "psynthea"
+                ],
+                "environment": {
+                    "PYTHONHASHSEED": "0"
+                },
+                "expected_output_files": [
+                    "patients.csv",
+                    "conditions.csv",
+                    "encounters.csv"
+                ],
+                "kind": "psynthea",
+                "output_subdirectory": "psynthea",
+                "timeout_seconds": 3600.0,
+                "working_directory": "/Users/pgt01/IRYCIS/psynthea"
+            }
+        ],
+        "tags": [
+            "hypertension",
+            "equivalence",
+            "phase-6"
+        ]
+    },
+    "config_sha256": "c0bfc045e424b4081d27edde6a5eb12f2cbaa26062eb99269c07375dc4ed8c25",
+    "experiment_id": "hypertension-equivalence",
+    "generated_at": "2026-07-22T09:42:28.161319+00:00",
+    "producer": {
+        "name": "experiment_orchestrator",
+        "version": "1.0.0"
+    },
+    "result": {
+        "artifacts": [
+            {
+                "created_at": "2026-07-22T09:42:22.191681+00:00",
+                "id": "synthea.stdout",
+                "kind": "log",
+                "media_type": "text/plain; charset=utf-8",
+                "metadata": {
+                    "stream": "stdout"
+                },
+                "path": "simulators/synthea/logs/stdout.log",
+                "producer": "synthea_runner",
+                "sha256": "83dc43f8bae49a95bc3b4779a1ec701740766cb6bb0c5bb620794548a30a7ab2",
+                "size_bytes": 20636
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.191992+00:00",
+                "id": "synthea.stderr",
+                "kind": "log",
+                "media_type": "text/plain; charset=utf-8",
+                "metadata": {
+                    "stream": "stderr"
+                },
+                "path": "simulators/synthea/logs/stderr.log",
+                "producer": "synthea_runner",
+                "sha256": "6592844c6fd8042db0dedfa6a937b42582873effa9baf939d4d1ddbb462f2fbc",
+                "size_bytes": 176
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.194276+00:00",
+                "id": "synthea.output.eca4593c09a762be",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/claims.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/claims.csv",
+                "producer": "synthea_runner",
+                "sha256": "fa7bd8a93fe1fcc0852abeb905446182dc5f3ba13798398a0e269afcf481b664",
+                "size_bytes": 327167
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.196075+00:00",
+                "id": "synthea.output.5dfe786b69089d98",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/claims_transactions.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/claims_transactions.csv",
+                "producer": "synthea_runner",
+                "sha256": "adb702540497f917b1a277dbe8a8332de2a0e31da79b1de7e2aca3149a961a26",
+                "size_bytes": 3580627
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.196418+00:00",
+                "id": "synthea.output.16387b7dcccd33e9",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/encounters.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/encounters.csv",
+                "producer": "synthea_runner",
+                "sha256": "7db88dda2525985c0175b9e91a3ac2648cb7cfb533e96f0901820be81aeb5d38",
+                "size_bytes": 268366
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.196717+00:00",
+                "id": "synthea.output.3668d5f59d6209c9",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/immunizations.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/immunizations.csv",
+                "producer": "synthea_runner",
+                "sha256": "b69d788466452d610e57d6785c6e86266a8d33dc9f66bd3cdc0c8bcf08af52e2",
+                "size_bytes": 158208
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.197058+00:00",
+                "id": "synthea.output.43cc910006f50bf1",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/observations.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/observations.csv",
+                "producer": "synthea_runner",
+                "sha256": "bb95b49f90d7b82f782b4c0eec0160029f66e2c96d7300a2a231f56e46d8067d",
+                "size_bytes": 273828
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.197280+00:00",
+                "id": "synthea.output.dddac2726573d04c",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/organizations.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/organizations.csv",
+                "producer": "synthea_runner",
+                "sha256": "c08942bb6cb423db023d0a81b000520782e0380d80b9de0272a393ee8376b2c5",
+                "size_bytes": 20524
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.197510+00:00",
+                "id": "synthea.output.e27c964ac456e35f",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/patients.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/patients.csv",
+                "producer": "synthea_runner",
+                "sha256": "cfe75b02d757357a63bebb2417b3f728b52cb52865976d65adec2815682074e1",
+                "size_bytes": 30301
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.198092+00:00",
+                "id": "synthea.output.87ca68789f71a8f3",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/payer_transitions.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/payer_transitions.csv",
+                "producer": "synthea_runner",
+                "sha256": "ce7d9fa363b212943d16a646cb2ee36cb5015b39cccadcdab965733fb6a8e5fd",
+                "size_bytes": 808891
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.198306+00:00",
+                "id": "synthea.output.ebcec8fc08e46fda",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/payers.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/payers.csv",
+                "producer": "synthea_runner",
+                "sha256": "686f98eff25ef75f54ff7ada6fb343eb6b61521693c4b43d164f8c6ca927f423",
+                "size_bytes": 1671
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.198530+00:00",
+                "id": "synthea.output.dc344f5331e02783",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "csv/providers.csv"
+                },
+                "path": "simulators/synthea/raw/synthea/csv/providers.csv",
+                "producer": "synthea_runner",
+                "sha256": "ea7966ca28981dbc4bc3f68f88de77ee61467773a25554fb82c305ec11ac7814",
+                "size_bytes": 24494
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.198911+00:00",
+                "id": "synthea.output.45ab7f168fe9d0ea",
+                "kind": "simulator_output",
+                "media_type": "application/json",
+                "metadata": {
+                    "output_path": "fhir/hospitalInformation1784713338025.json"
+                },
+                "path": "simulators/synthea/raw/synthea/fhir/hospitalInformation1784713338025.json",
+                "producer": "synthea_runner",
+                "sha256": "8205d03cf73e9726958f0481b4a610f4e5831300c34c35aad916a21ae5d1ac9d",
+                "size_bytes": 410346
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.199486+00:00",
+                "id": "synthea.output.3532fd78cf7f62e9",
+                "kind": "simulator_output",
+                "media_type": "application/json",
+                "metadata": {
+                    "output_path": "fhir/practitionerInformation1784713338025.json"
+                },
+                "path": "simulators/synthea/raw/synthea/fhir/practitionerInformation1784713338025.json",
+                "producer": "synthea_runner",
+                "sha256": "7431d1c01d8011c59528ee13cdb18a87ff0703edf4f73077e40b046a9f8f32ba",
+                "size_bytes": 432443
+            },
+            {
+                "created_at": "2026-07-22T09:42:22.199704+00:00",
+                "id": "synthea.output.58f3afce9f6b00ce",
+                "kind": "simulator_output",
+                "media_type": "application/json",
+                "metadata": {
+                    "output_path": "metadata/2026_07_22T09_42_18Z_100_Massachusetts_9d54f7fa_e308_4522_a7d4_acb6c1476d73.json"
+                },
+                "path": "simulators/synthea/raw/synthea/metadata/2026_07_22T09_42_18Z_100_Massachusetts_9d54f7fa_e308_4522_a7d4_acb6c1476d73.json",
+                "producer": "synthea_runner",
+                "sha256": "458846022d505c60e38af64c6229687957c498dbe597875f99074aa546567681",
+                "size_bytes": 538
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.157920+00:00",
+                "id": "psynthea.stdout",
+                "kind": "log",
+                "media_type": "text/plain; charset=utf-8",
+                "metadata": {
+                    "stream": "stdout"
+                },
+                "path": "simulators/psynthea/logs/stdout.log",
+                "producer": "psynthea_runner",
+                "sha256": "af6dcac65383e0a4786a70ba5b2cf231a8e7fc47670ae9cf54b083df23e9668e",
+                "size_bytes": 460
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.158164+00:00",
+                "id": "psynthea.stderr",
+                "kind": "log",
+                "media_type": "text/plain; charset=utf-8",
+                "metadata": {
+                    "stream": "stderr"
+                },
+                "path": "simulators/psynthea/logs/stderr.log",
+                "producer": "psynthea_runner",
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "size_bytes": 0
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.159335+00:00",
+                "id": "psynthea.output.6b9d1865d362e102",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "conditions.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/conditions.csv",
+                "producer": "psynthea_runner",
+                "sha256": "4d05e4692702eed9691ef66117ca0598c88b626b423ede68832ab2f1ce7e5614",
+                "size_bytes": 6479
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.159548+00:00",
+                "id": "psynthea.output.c5942525a6f4f29d",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "devices.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/devices.csv",
+                "producer": "psynthea_runner",
+                "sha256": "b12f12386414f769a54c82608df3a8da3001e5cf2bf6149f45e68076e77210c0",
+                "size_bytes": 47
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.159816+00:00",
+                "id": "psynthea.output.a4b3c0aa1d75ef18",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "encounters.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/encounters.csv",
+                "producer": "psynthea_runner",
+                "sha256": "93b82eaa0e04e25aee1d27344aa120ecaf884ee7f2e67c986bcc89edc45d9a66",
+                "size_bytes": 108287
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.160019+00:00",
+                "id": "psynthea.output.20e8b2d7430643ce",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "imaging_studies.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/imaging_studies.csv",
+                "producer": "psynthea_runner",
+                "sha256": "f39ae66b3b3b7a9229226292a1da519ef46020f3fdae1f09fbef6f1294668c67",
+                "size_bytes": 105
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.160219+00:00",
+                "id": "psynthea.output.6ab6e2f5318e23b2",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "medications.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/medications.csv",
+                "producer": "psynthea_runner",
+                "sha256": "b12f12386414f769a54c82608df3a8da3001e5cf2bf6149f45e68076e77210c0",
+                "size_bytes": 47
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.160672+00:00",
+                "id": "psynthea.output.3e5f7135a4c3e315",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "observations.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/observations.csv",
+                "producer": "psynthea_runner",
+                "sha256": "ba7dede05b28ec3953f221d04d03a5bbd96bb2932bb1638f4e77e1dfdcfc33a0",
+                "size_bytes": 466871
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.160877+00:00",
+                "id": "psynthea.output.3134ff4e3946581f",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "patients.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/patients.csv",
+                "producer": "psynthea_runner",
+                "sha256": "f1a0aeb165ecb3bae8eb95574cc0f39c5c90239ea135655b7983c73946b3b875",
+                "size_bytes": 5341
+            },
+            {
+                "created_at": "2026-07-22T09:42:28.161078+00:00",
+                "id": "psynthea.output.b8de9c5c4ec422c5",
+                "kind": "simulator_output",
+                "media_type": "text/csv",
+                "metadata": {
+                    "output_path": "supplies.csv"
+                },
+                "path": "simulators/psynthea/raw/psynthea/supplies.csv",
+                "producer": "psynthea_runner",
+                "sha256": "1c38d10c9b6ed3767cb19dbd179e9324a5486b8ef48b1937ebdd93db067a4c4f",
+                "size_bytes": 50
+            }
+        ],
+        "config": {
+            "cohort": {
+                "ground_truth": false,
+                "keystone": true,
+                "max_age": 90,
+                "min_age": 18,
+                "module_files": [],
+                "modules": [
+                    "hypertension",
+                    "covid19"
+                ],
+                "modules_dir": "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules",
+                "mortality": true,
+                "output_format": "csv",
+                "parameters": {
+                    "profile": {
+                        "country": "ES"
+                    }
+                },
+                "population": 100,
+                "profile_file": null,
+                "reference_date": "2024-12-31",
+                "seed": 42,
+                "step_days": 1,
+                "vitals": true,
+                "wellness_encounters": true,
+                "years_of_history": 10
+            },
+            "description": "Deterministic end-to-end scientific validation of the hypertension module.",
+            "id": "hypertension-equivalence",
+            "metadata": {
+                "protocol": {
+                    "name": "IRYCIS Psynthea Scientific Validation",
+                    "version": 1
+                },
+                "validation": {
+                    "alpha": 0.05,
+                    "categorical_effect_margin": 0.1,
+                    "confidence_level": 0.95,
+                    "continuous_effect_margin": 0.2,
+                    "fdr_method": "benjamini-hochberg"
+                }
+            },
+            "name": "Hypertension equivalence: Synthea vs psynthea",
+            "output_root": "/Users/pgt01/IRYCIS/psynthea-validation/runs",
+            "report_formats": [
+                "html",
+                "json"
+            ],
+            "simulators": [
+                {
+                    "arguments": {
+                        "command_arguments": [
+                            "--args=-p {population} -s {seed} -m {modules} -r 20241231 -a 18-90 --exporter.baseDirectory={output_dir} --exporter.csv.export=true --exporter.fhir.export=false"
+                        ],
+                        "discover_outputs": true
+                    },
+                    "command": [
+                        "./gradlew",
+                        "run"
+                    ],
+                    "environment": {},
+                    "expected_output_files": [
+                        "csv/patients.csv",
+                        "csv/conditions.csv",
+                        "csv/encounters.csv"
+                    ],
+                    "kind": "synthea",
+                    "output_subdirectory": "synthea",
+                    "timeout_seconds": 3600.0,
+                    "working_directory": "/Users/pgt01/IRYCIS/synthea"
+                },
+                {
+                    "arguments": {
+                        "discover_outputs": true
+                    },
+                    "command": [
+                        "psynthea"
+                    ],
+                    "environment": {
+                        "PYTHONHASHSEED": "0"
+                    },
+                    "expected_output_files": [
+                        "patients.csv",
+                        "conditions.csv",
+                        "encounters.csv"
+                    ],
+                    "kind": "psynthea",
+                    "output_subdirectory": "psynthea",
+                    "timeout_seconds": 3600.0,
+                    "working_directory": "/Users/pgt01/IRYCIS/psynthea"
+                }
+            ],
+            "tags": [
+                "hypertension",
+                "equivalence",
+                "phase-6"
+            ]
+        },
+        "duration_seconds": 11.315579541027546,
+        "error_message": "synthea completed without required output file(s): csv/conditions.csv.",
+        "experiment_id": "hypertension-equivalence",
+        "finished_at": "2026-07-22T09:42:28.161319+00:00",
+        "metadata": {
+            "external_stage_order": [
+                "cohort_loading",
+                "cohort_normalization",
+                "validation",
+                "knowledge_enrichment",
+                "root_cause_analysis",
+                "report_generation"
+            ],
+            "orchestrator": "experiment_orchestrator",
+            "orchestrator_version": "1.0.0",
+            "simulator_order": [
+                "synthea",
+                "psynthea"
+            ]
+        },
+        "run_id": "run-20260722T094216845727Z-b31dfbc11143",
+        "simulator_runs": [
+            {
+                "artifacts": [
+                    {
+                        "created_at": "2026-07-22T09:42:22.191681+00:00",
+                        "id": "synthea.stdout",
+                        "kind": "log",
+                        "media_type": "text/plain; charset=utf-8",
+                        "metadata": {
+                            "stream": "stdout"
+                        },
+                        "path": "simulators/synthea/logs/stdout.log",
+                        "producer": "synthea_runner",
+                        "sha256": "83dc43f8bae49a95bc3b4779a1ec701740766cb6bb0c5bb620794548a30a7ab2",
+                        "size_bytes": 20636
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.191992+00:00",
+                        "id": "synthea.stderr",
+                        "kind": "log",
+                        "media_type": "text/plain; charset=utf-8",
+                        "metadata": {
+                            "stream": "stderr"
+                        },
+                        "path": "simulators/synthea/logs/stderr.log",
+                        "producer": "synthea_runner",
+                        "sha256": "6592844c6fd8042db0dedfa6a937b42582873effa9baf939d4d1ddbb462f2fbc",
+                        "size_bytes": 176
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.194276+00:00",
+                        "id": "synthea.output.eca4593c09a762be",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/claims.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/claims.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "fa7bd8a93fe1fcc0852abeb905446182dc5f3ba13798398a0e269afcf481b664",
+                        "size_bytes": 327167
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.196075+00:00",
+                        "id": "synthea.output.5dfe786b69089d98",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/claims_transactions.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/claims_transactions.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "adb702540497f917b1a277dbe8a8332de2a0e31da79b1de7e2aca3149a961a26",
+                        "size_bytes": 3580627
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.196418+00:00",
+                        "id": "synthea.output.16387b7dcccd33e9",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/encounters.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/encounters.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "7db88dda2525985c0175b9e91a3ac2648cb7cfb533e96f0901820be81aeb5d38",
+                        "size_bytes": 268366
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.196717+00:00",
+                        "id": "synthea.output.3668d5f59d6209c9",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/immunizations.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/immunizations.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "b69d788466452d610e57d6785c6e86266a8d33dc9f66bd3cdc0c8bcf08af52e2",
+                        "size_bytes": 158208
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.197058+00:00",
+                        "id": "synthea.output.43cc910006f50bf1",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/observations.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/observations.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "bb95b49f90d7b82f782b4c0eec0160029f66e2c96d7300a2a231f56e46d8067d",
+                        "size_bytes": 273828
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.197280+00:00",
+                        "id": "synthea.output.dddac2726573d04c",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/organizations.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/organizations.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "c08942bb6cb423db023d0a81b000520782e0380d80b9de0272a393ee8376b2c5",
+                        "size_bytes": 20524
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.197510+00:00",
+                        "id": "synthea.output.e27c964ac456e35f",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/patients.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/patients.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "cfe75b02d757357a63bebb2417b3f728b52cb52865976d65adec2815682074e1",
+                        "size_bytes": 30301
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.198092+00:00",
+                        "id": "synthea.output.87ca68789f71a8f3",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/payer_transitions.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/payer_transitions.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "ce7d9fa363b212943d16a646cb2ee36cb5015b39cccadcdab965733fb6a8e5fd",
+                        "size_bytes": 808891
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.198306+00:00",
+                        "id": "synthea.output.ebcec8fc08e46fda",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/payers.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/payers.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "686f98eff25ef75f54ff7ada6fb343eb6b61521693c4b43d164f8c6ca927f423",
+                        "size_bytes": 1671
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.198530+00:00",
+                        "id": "synthea.output.dc344f5331e02783",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "csv/providers.csv"
+                        },
+                        "path": "simulators/synthea/raw/synthea/csv/providers.csv",
+                        "producer": "synthea_runner",
+                        "sha256": "ea7966ca28981dbc4bc3f68f88de77ee61467773a25554fb82c305ec11ac7814",
+                        "size_bytes": 24494
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.198911+00:00",
+                        "id": "synthea.output.45ab7f168fe9d0ea",
+                        "kind": "simulator_output",
+                        "media_type": "application/json",
+                        "metadata": {
+                            "output_path": "fhir/hospitalInformation1784713338025.json"
+                        },
+                        "path": "simulators/synthea/raw/synthea/fhir/hospitalInformation1784713338025.json",
+                        "producer": "synthea_runner",
+                        "sha256": "8205d03cf73e9726958f0481b4a610f4e5831300c34c35aad916a21ae5d1ac9d",
+                        "size_bytes": 410346
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.199486+00:00",
+                        "id": "synthea.output.3532fd78cf7f62e9",
+                        "kind": "simulator_output",
+                        "media_type": "application/json",
+                        "metadata": {
+                            "output_path": "fhir/practitionerInformation1784713338025.json"
+                        },
+                        "path": "simulators/synthea/raw/synthea/fhir/practitionerInformation1784713338025.json",
+                        "producer": "synthea_runner",
+                        "sha256": "7431d1c01d8011c59528ee13cdb18a87ff0703edf4f73077e40b046a9f8f32ba",
+                        "size_bytes": 432443
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:22.199704+00:00",
+                        "id": "synthea.output.58f3afce9f6b00ce",
+                        "kind": "simulator_output",
+                        "media_type": "application/json",
+                        "metadata": {
+                            "output_path": "metadata/2026_07_22T09_42_18Z_100_Massachusetts_9d54f7fa_e308_4522_a7d4_acb6c1476d73.json"
+                        },
+                        "path": "simulators/synthea/raw/synthea/metadata/2026_07_22T09_42_18Z_100_Massachusetts_9d54f7fa_e308_4522_a7d4_acb6c1476d73.json",
+                        "producer": "synthea_runner",
+                        "sha256": "458846022d505c60e38af64c6229687957c498dbe597875f99074aa546567681",
+                        "size_bytes": 538
+                    }
+                ],
+                "command": [
+                    "./gradlew",
+                    "run",
+                    "--args=-p 100 -s 42 -m hypertension,covid19 -r 20241231 -a 18-90 --exporter.baseDirectory=/Users/pgt01/IRYCIS/psynthea-validation/runs/hypertension-equivalence/run-20260722T094216845727Z-b31dfbc11143/simulators/synthea/raw/synthea --exporter.csv.export=true --exporter.fhir.export=false"
+                ],
+                "duration_seconds": 5.34346058301162,
+                "error_message": "synthea completed without required output file(s): csv/conditions.csv.",
+                "finished_at": "2026-07-22T09:42:22.190867+00:00",
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:synthea",
+                "metadata": {
+                    "command_profile": "custom_template",
+                    "discovered_output_count": 13,
+                    "expected_output_count": 3,
+                    "output_directory": "simulators/synthea/raw/synthea",
+                    "subprocess_return_code": 0,
+                    "timed_out": false,
+                    "timeout_seconds": 3600.0
+                },
+                "return_code": null,
+                "simulator": "synthea",
+                "started_at": "2026-07-22T09:42:16.847439+00:00",
+                "status": "failed",
+                "working_directory": "/Users/pgt01/IRYCIS/synthea"
+            },
+            {
+                "artifacts": [
+                    {
+                        "created_at": "2026-07-22T09:42:28.157920+00:00",
+                        "id": "psynthea.stdout",
+                        "kind": "log",
+                        "media_type": "text/plain; charset=utf-8",
+                        "metadata": {
+                            "stream": "stdout"
+                        },
+                        "path": "simulators/psynthea/logs/stdout.log",
+                        "producer": "psynthea_runner",
+                        "sha256": "af6dcac65383e0a4786a70ba5b2cf231a8e7fc47670ae9cf54b083df23e9668e",
+                        "size_bytes": 460
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.158164+00:00",
+                        "id": "psynthea.stderr",
+                        "kind": "log",
+                        "media_type": "text/plain; charset=utf-8",
+                        "metadata": {
+                            "stream": "stderr"
+                        },
+                        "path": "simulators/psynthea/logs/stderr.log",
+                        "producer": "psynthea_runner",
+                        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                        "size_bytes": 0
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.159335+00:00",
+                        "id": "psynthea.output.6b9d1865d362e102",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "conditions.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/conditions.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "4d05e4692702eed9691ef66117ca0598c88b626b423ede68832ab2f1ce7e5614",
+                        "size_bytes": 6479
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.159548+00:00",
+                        "id": "psynthea.output.c5942525a6f4f29d",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "devices.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/devices.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "b12f12386414f769a54c82608df3a8da3001e5cf2bf6149f45e68076e77210c0",
+                        "size_bytes": 47
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.159816+00:00",
+                        "id": "psynthea.output.a4b3c0aa1d75ef18",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "encounters.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/encounters.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "93b82eaa0e04e25aee1d27344aa120ecaf884ee7f2e67c986bcc89edc45d9a66",
+                        "size_bytes": 108287
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.160019+00:00",
+                        "id": "psynthea.output.20e8b2d7430643ce",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "imaging_studies.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/imaging_studies.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "f39ae66b3b3b7a9229226292a1da519ef46020f3fdae1f09fbef6f1294668c67",
+                        "size_bytes": 105
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.160219+00:00",
+                        "id": "psynthea.output.6ab6e2f5318e23b2",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "medications.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/medications.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "b12f12386414f769a54c82608df3a8da3001e5cf2bf6149f45e68076e77210c0",
+                        "size_bytes": 47
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.160672+00:00",
+                        "id": "psynthea.output.3e5f7135a4c3e315",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "observations.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/observations.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "ba7dede05b28ec3953f221d04d03a5bbd96bb2932bb1638f4e77e1dfdcfc33a0",
+                        "size_bytes": 466871
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.160877+00:00",
+                        "id": "psynthea.output.3134ff4e3946581f",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "patients.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/patients.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "f1a0aeb165ecb3bae8eb95574cc0f39c5c90239ea135655b7983c73946b3b875",
+                        "size_bytes": 5341
+                    },
+                    {
+                        "created_at": "2026-07-22T09:42:28.161078+00:00",
+                        "id": "psynthea.output.b8de9c5c4ec422c5",
+                        "kind": "simulator_output",
+                        "media_type": "text/csv",
+                        "metadata": {
+                            "output_path": "supplies.csv"
+                        },
+                        "path": "simulators/psynthea/raw/psynthea/supplies.csv",
+                        "producer": "psynthea_runner",
+                        "sha256": "1c38d10c9b6ed3767cb19dbd179e9324a5486b8ef48b1937ebdd93db067a4c4f",
+                        "size_bytes": 50
+                    }
+                ],
+                "command": [
+                    "psynthea",
+                    "generate",
+                    "-p",
+                    "100",
+                    "-m",
+                    "hypertension",
+                    "covid19",
+                    "-d",
+                    "/Users/pgt01/IRYCIS/psynthea-validation/resources/synthea/modules",
+                    "-o",
+                    "/Users/pgt01/IRYCIS/psynthea-validation/runs/hypertension-equivalence/run-20260722T094216845727Z-b31dfbc11143/simulators/psynthea/raw/psynthea",
+                    "--seed",
+                    "42",
+                    "--format",
+                    "csv",
+                    "--end-date",
+                    "2024-12-31",
+                    "--min-age",
+                    "18",
+                    "--max-age",
+                    "90",
+                    "--step-days",
+                    "1",
+                    "--years-of-history",
+                    "10",
+                    "--wellness-encounters",
+                    "--vitals",
+                    "--mortality",
+                    "--keystone"
+                ],
+                "duration_seconds": 5.956938749994151,
+                "error_message": null,
+                "finished_at": "2026-07-22T09:42:28.157487+00:00",
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:psynthea",
+                "metadata": {
+                    "command_profile": "psynthea:declarative-v1",
+                    "discovered_output_count": 8,
+                    "expected_output_count": 3,
+                    "output_directory": "simulators/psynthea/raw/psynthea",
+                    "subprocess_return_code": 0,
+                    "timed_out": false,
+                    "timeout_seconds": 3600.0
+                },
+                "return_code": 0,
+                "simulator": "psynthea",
+                "started_at": "2026-07-22T09:42:22.200567+00:00",
+                "status": "succeeded",
+                "working_directory": "/Users/pgt01/IRYCIS/psynthea"
+            }
+        ],
+        "stage_results": [
+            {
+                "artifacts": [],
+                "duration_seconds": 0.001099,
+                "error_message": null,
+                "finished_at": "2026-07-22T09:42:16.846856+00:00",
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:workspace_initialization",
+                "metadata": {
+                    "orchestrator_version": "1.0.0",
+                    "workspace": "/Users/pgt01/IRYCIS/psynthea-validation/runs/hypertension-equivalence/run-20260722T094216845727Z-b31dfbc11143"
+                },
+                "stage": "workspace_initialization",
+                "started_at": "2026-07-22T09:42:16.845757+00:00",
+                "status": "succeeded",
+                "summary": "Experiment workspace created and ownership verified."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": null,
+                "error_message": null,
+                "finished_at": null,
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:cohort_loading",
+                "metadata": {
+                    "skip_reason": "Skipped because an upstream dependency failed."
+                },
+                "stage": "cohort_loading",
+                "started_at": null,
+                "status": "skipped",
+                "summary": "Skipped because an upstream dependency failed."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": null,
+                "error_message": null,
+                "finished_at": null,
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:cohort_normalization",
+                "metadata": {
+                    "skip_reason": "Skipped because an upstream dependency failed."
+                },
+                "stage": "cohort_normalization",
+                "started_at": null,
+                "status": "skipped",
+                "summary": "Skipped because an upstream dependency failed."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": null,
+                "error_message": null,
+                "finished_at": null,
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:validation",
+                "metadata": {
+                    "skip_reason": "Skipped because an upstream dependency failed."
+                },
+                "stage": "validation",
+                "started_at": null,
+                "status": "skipped",
+                "summary": "Skipped because an upstream dependency failed."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": null,
+                "error_message": null,
+                "finished_at": null,
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:knowledge_enrichment",
+                "metadata": {
+                    "skip_reason": "Skipped because an upstream dependency failed."
+                },
+                "stage": "knowledge_enrichment",
+                "started_at": null,
+                "status": "skipped",
+                "summary": "Skipped because an upstream dependency failed."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": null,
+                "error_message": null,
+                "finished_at": null,
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:root_cause_analysis",
+                "metadata": {
+                    "skip_reason": "Skipped because an upstream dependency failed."
+                },
+                "stage": "root_cause_analysis",
+                "started_at": null,
+                "status": "skipped",
+                "summary": "Skipped because an upstream dependency failed."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": null,
+                "error_message": null,
+                "finished_at": null,
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:report_generation",
+                "metadata": {
+                    "skip_reason": "Skipped because an upstream dependency failed."
+                },
+                "stage": "report_generation",
+                "started_at": null,
+                "status": "skipped",
+                "summary": "Skipped because an upstream dependency failed."
+            },
+            {
+                "artifacts": [],
+                "duration_seconds": 3e-06,
+                "error_message": null,
+                "finished_at": "2026-07-22T09:42:28.161304+00:00",
+                "id": "hypertension-equivalence:run-20260722T094216845727Z-b31dfbc11143:manifest_finalization",
+                "metadata": {
+                    "artifact_count": 25,
+                    "verify_artifacts": true
+                },
+                "stage": "manifest_finalization",
+                "started_at": "2026-07-22T09:42:28.161301+00:00",
+                "status": "succeeded",
+                "summary": "Manifest preconditions and artefact catalogue finalized."
+            }
+        ],
+        "started_at": "2026-07-22T09:42:16.845757+00:00",
+        "status": "failed",
+        "workspace": "/Users/pgt01/IRYCIS/psynthea-validation/runs/hypertension-equivalence/run-20260722T094216845727Z-b31dfbc11143"
+    },
+    "run_id": "run-20260722T094216845727Z-b31dfbc11143",
+    "schema_version": 3,
+    "workspace": "."
+}

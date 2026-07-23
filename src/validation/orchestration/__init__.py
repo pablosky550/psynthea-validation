@@ -16,6 +16,9 @@ Domain
     PipelineStageResult
     ArtifactReference
 
+Configuration
+    apply_experiment_overrides
+
 Execution
     ExperimentWorkspace
     ExperimentOrchestrator
@@ -60,6 +63,7 @@ Exceptions
 
 
 from .configuration import (
+    apply_experiment_overrides,
     ExperimentConfigurationError,
     dump_experiment_config,
     experiment_config_to_dict,
@@ -150,8 +154,9 @@ __all__ = [
     "PipelineStageResult",
     "ArtifactReference",
 
-    # Configuration codec
+    # Configuration codec and overrides
     "ExperimentConfigurationError",
+    "apply_experiment_overrides",
     "load_experiment_config",
     "parse_experiment_config",
     "experiment_config_to_dict",

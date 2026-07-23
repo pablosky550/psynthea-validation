@@ -52,6 +52,7 @@ def _experiment(
     *,
     synthea: SimulatorConfig | None = None,
     psynthea: SimulatorConfig | None = None,
+    modules_dir: Path | None = None,
 ) -> ExperimentConfig:
     return ExperimentConfig(
         id="exp.runners",
@@ -60,6 +61,7 @@ def _experiment(
             population=25,
             seed=42,
             modules=("hypertension", "diabetes"),
+            modules_dir = modules_dir,
             reference_date=date(2026, 1, 1),
             min_age=18,
             max_age=90,
@@ -72,6 +74,168 @@ def _experiment(
         report_formats=(ReportFormat.HTML,),
     )
 
+def test_psynthea_default_plan_includes_modules_directory(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    config = _experiment(
+        tmp_path,
+        modules_dir=modules_dir,
+    )
+    runner = PsyntheaRunner(
+        config.simulator(SimulatorKind.PSYNTHEA)
+    )
+
+    plan = runner.build_plan(
+        experiment=config,
+        workspace=_workspace(config),
+    )
+
+    modules_dir_index = plan.command.index("-d")
+
+    assert plan.command[modules_dir_index + 1] == str(
+        modules_dir.resolve()
+    )
+    assert plan.command.count("-d") == 1
+    assert plan.command.count("-m") == 2
+
+def test_synthea_plan_does_not_receive_psynthea_modules_directory(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    config = _experiment(
+        tmp_path,
+        modules_dir=modules_dir,
+    )
+    runner = SyntheaRunner(
+        config.simulator(SimulatorKind.SYNTHEA)
+    )
+
+    plan = runner.build_plan(
+        experiment=config,
+        workspace=_workspace(config),
+    )
+
+    assert "-d" not in plan.command
+    assert "--modules-dir" not in plan.command
+    assert plan.command[-2:] == (
+        "-m",
+        "hypertension,diabetes",
+    )
+
+def test_psynthea_custom_template_receives_modules_directory(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    psynthea = _simulator_config(
+        SimulatorKind.PSYNTHEA,
+        tmp_path,
+        arguments={
+            "command_arguments": (
+                "generate",
+                "--population={population}",
+                "--output={output_dir}",
+            ),
+        },
+    )
+    config = _experiment(
+        tmp_path,
+        psynthea=psynthea,
+        modules_dir=modules_dir,
+    )
+
+    plan = PsyntheaRunner(psynthea).build_plan(
+        experiment=config,
+        workspace=_workspace(config),
+    )
+
+    assert plan.command[-2:] == (
+        "-d",
+        str(modules_dir.resolve()),
+    )
+    assert plan.command.count("-d") == 1
+
+def test_psynthea_custom_template_does_not_duplicate_short_modules_dir_option(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    psynthea = _simulator_config(
+        SimulatorKind.PSYNTHEA,
+        tmp_path,
+        arguments={
+            "command_arguments": (
+                "generate",
+                "-d",
+                "{modules_dir}",
+                "--output={output_dir}",
+            ),
+        },
+    )
+    config = _experiment(
+        tmp_path,
+        psynthea=psynthea,
+        modules_dir=modules_dir,
+    )
+
+    plan = PsyntheaRunner(psynthea).build_plan(
+        experiment=config,
+        workspace=_workspace(config),
+    )
+
+    assert plan.command.count("-d") == 1
+
+    modules_dir_index = plan.command.index("-d")
+    assert plan.command[modules_dir_index + 1] == str(
+        modules_dir.resolve()
+    )
+
+def test_psynthea_custom_template_does_not_duplicate_long_modules_dir_option(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    psynthea = _simulator_config(
+        SimulatorKind.PSYNTHEA,
+        tmp_path,
+        arguments={
+            "command_arguments": (
+                "generate",
+                "--modules-dir={modules_dir}",
+                "--output={output_dir}",
+            ),
+        },
+    )
+    config = _experiment(
+        tmp_path,
+        psynthea=psynthea,
+        modules_dir=modules_dir,
+    )
+
+    plan = PsyntheaRunner(psynthea).build_plan(
+        experiment=config,
+        workspace=_workspace(config),
+    )
+
+    modules_dir_arguments = tuple(
+        argument
+        for argument in plan.command
+        if argument == "-d"
+        or argument == "--modules-dir"
+        or argument.startswith("--modules-dir=")
+    )
+
+    assert modules_dir_arguments == (
+        f"--modules-dir={modules_dir.resolve()}",
+    )
 
 def _workspace(config: ExperimentConfig) -> ExperimentWorkspace:
     return ExperimentWorkspace.create(config=config, run_id="run-001")

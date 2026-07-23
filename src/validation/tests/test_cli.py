@@ -478,3 +478,362 @@ def test_legacy_only_output_flags_are_rejected_in_experiment_mode(
     )
     assert code == ExitCode.INVALID_ARGUMENTS
     assert "legacy validation mode" in stderr.getvalue()
+
+
+def test_experiment_cli_applies_all_general_overrides_to_executed_config(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from validation.orchestration.configuration import parse_experiment_config
+    from validation.orchestration.models import ExecutionStatus
+
+    config_path = tmp_path / "experiment.json"
+    config_path.write_text("{}", encoding="utf-8")
+    payload = {
+        "schema_version": 1,
+        "id": "baseline",
+        "name": "Baseline",
+        "cohort": {
+            "population": 10,
+            "seed": 1,
+            "modules": ["Hypertension"],
+            "reference_date": "2025-01-01",
+            "min_age": 18,
+            "max_age": 85,
+            "step_days": 1,
+            "years_of_history": 5,
+            "wellness_encounters": False,
+            "vitals": True,
+            "mortality": True,
+            "keystone": False,
+            "ground_truth": False,
+            "output_format": "csv",
+        },
+        "simulators": [
+            {
+                "kind": "synthea",
+                "command": ["synthea"],
+                "working_directory": str(tmp_path),
+                "output_subdirectory": "synthea",
+            },
+            {
+                "kind": "psynthea",
+                "command": ["psynthea"],
+                "working_directory": str(tmp_path),
+                "output_subdirectory": "psynthea",
+            },
+        ],
+        "output_root": str(tmp_path / "runs"),
+    }
+    original = parse_experiment_config(payload)
+    monkeypatch.setattr("validation.cli.load_experiment_config", lambda _: original)
+
+    captured: dict[str, object] = {}
+
+    class _Result:
+        status = ExecutionStatus.SUCCEEDED
+        error_message = None
+
+    class _Execution:
+        result = _Result()
+        workspace = None
+
+    def fake_run(config, *, run_id=None, module_name=None):
+        captured["config"] = config
+        captured["run_id"] = run_id
+        captured["module_name"] = module_name
+        return _Execution()
+
+    monkeypatch.setattr("validation.cli.run_full_experiment", fake_run)
+    monkeypatch.setattr("validation.cli._print_experiment_summary", lambda *_: None)
+
+    profile_file = tmp_path / "profiles" / "spain.json"
+    module_file = tmp_path / "modules" / "diabetes.json"
+    code = main(
+        [
+            "--config", str(config_path),
+            "--experiment",
+            "--population", "250",
+            "--seed", "42",
+            "--module-file", str(module_file),
+            "--reference-date", "2026-07-21",
+            "--min-age", "21",
+            "--max-age", "90",
+            "--step-days", "7",
+            "--years-of-history", "12",
+            "--wellness-encounters",
+            "--no-vitals",
+            "--no-mortality",
+            "--keystone",
+            "--ground-truth",
+            "--output-format", "omop",
+            "--profile-file", str(profile_file),
+            "--output-root", str(tmp_path / "custom"),
+            "--experiment-id", "diabetes-run",
+            "--experiment-name", "Diabetes run",
+            "--run-id", "run-001",
+            "--module-name", "Diabetes",
+        ],
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert code == ExitCode.SUCCESS
+    resolved = captured["config"]
+    assert resolved.cohort.population == 250
+    assert resolved.cohort.seed == 42
+    assert resolved.cohort.modules == ()
+    assert resolved.cohort.module_files == (module_file.resolve(),)
+    assert resolved.cohort.reference_date.isoformat() == "2026-07-21"
+    assert resolved.cohort.min_age == 21
+    assert resolved.cohort.max_age == 90
+    assert resolved.cohort.step_days == 7
+    assert resolved.cohort.years_of_history == 12
+    assert resolved.cohort.wellness_encounters is True
+    assert resolved.cohort.vitals is False
+    assert resolved.cohort.mortality is False
+    assert resolved.cohort.keystone is True
+    assert resolved.cohort.ground_truth is True
+    assert resolved.cohort.output_format == "omop"
+    assert resolved.cohort.profile_file == profile_file.resolve()
+    assert resolved.output_root == (tmp_path / "custom").resolve()
+    assert resolved.id == "diabetes-run"
+    assert resolved.name == "Diabetes run"
+    assert captured["run_id"] == "run-001"
+    assert captured["module_name"] == "Diabetes"
+
+
+def test_experiment_cli_preserves_path_execution_without_overrides(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+    from validation.orchestration import ExecutionStatus
+
+    config_path = tmp_path / "experiment.json"
+    config_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("validation.cli.load_experiment_config", lambda _: object())
+
+    captured: dict[str, object] = {}
+
+    def fake_run(config, *, run_id=None, module_name=None):
+        captured["config"] = config
+        return SimpleNamespace(
+            result=SimpleNamespace(
+                status=ExecutionStatus.SUCCEEDED,
+                error_message=None,
+                run_id="run-001",
+                workspace=tmp_path,
+            ),
+            manifest=None,
+        )
+
+    monkeypatch.setattr("validation.cli.run_full_experiment", fake_run)
+    monkeypatch.setattr("validation.cli._print_experiment_summary", lambda *_: None)
+
+    code = main(
+        ["--config", str(config_path), "--experiment"],
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert code == ExitCode.SUCCESS
+    assert captured["config"] == config_path
+
+
+def test_help_exposes_all_experiment_override_options() -> None:
+    stdout = StringIO()
+
+    code = main(["--help"], stdout=stdout, stderr=StringIO())
+
+    assert code == ExitCode.SUCCESS
+    help_text = stdout.getvalue()
+    for option in (
+        "--population",
+        "--seed",
+        "--module",
+        "--module-file",
+        "--reference-date",
+        "--min-age",
+        "--max-age",
+        "--step-days",
+        "--years-of-history",
+        "--wellness-encounters",
+        "--no-wellness-encounters",
+        "--vitals",
+        "--no-vitals",
+        "--mortality",
+        "--no-mortality",
+        "--keystone",
+        "--no-keystone",
+        "--ground-truth",
+        "--no-ground-truth",
+        "--output-format",
+        "--profile-file",
+        "--output-root",
+        "--experiment-id",
+        "--experiment-name",
+    ):
+        assert option in help_text
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--population", "100"],
+        ["--seed", "42"],
+        ["--module", "Hypertension"],
+        ["--module-file", "modules/hypertension.json"],
+        ["--reference-date", "2026-07-21"],
+        ["--min-age", "18"],
+        ["--max-age", "90"],
+        ["--step-days", "7"],
+        ["--years-of-history", "10"],
+        ["--wellness-encounters"],
+        ["--no-wellness-encounters"],
+        ["--vitals"],
+        ["--no-vitals"],
+        ["--mortality"],
+        ["--no-mortality"],
+        ["--keystone"],
+        ["--no-keystone"],
+        ["--ground-truth"],
+        ["--no-ground-truth"],
+        ["--output-format", "csv"],
+        ["--profile-file", "profiles/spain.json"],
+        ["--output-root", "runs"],
+        ["--experiment-id", "experiment-1"],
+        ["--experiment-name", "Experiment 1"],
+    ],
+)
+def test_experiment_override_options_are_rejected_without_experiment(
+    arguments: list[str],
+    tmp_path: Path,
+) -> None:
+    stderr = StringIO()
+
+    code = main(
+        ["--config", str(tmp_path / "config.json"), *arguments],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert code == ExitCode.INVALID_ARGUMENTS
+    assert "require --experiment" in stderr.getvalue()
+
+
+def test_module_and_module_file_are_mutually_exclusive(tmp_path: Path) -> None:
+    stderr = StringIO()
+
+    code = main(
+        [
+            "--config", str(tmp_path / "experiment.json"),
+            "--experiment",
+            "--module", "Hypertension",
+            "--module-file", "modules/hypertension.json",
+        ],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert code == ExitCode.INVALID_ARGUMENTS
+    assert "not allowed with argument" in stderr.getvalue()
+
+
+@pytest.mark.parametrize(
+    "arguments, expected_fragment",
+    [
+        (["--reference-date", "21-07-2026"], "invalid ISO date"),
+        (["--reference-date", "2026-02-30"], "invalid ISO date"),
+        (["--output-format", "parquet"], "invalid choice"),
+    ],
+)
+def test_invalid_experiment_override_syntax_is_rejected_by_parser(
+    arguments: list[str],
+    expected_fragment: str,
+    tmp_path: Path,
+) -> None:
+    stderr = StringIO()
+
+    code = main(
+        [
+            "--config", str(tmp_path / "experiment.json"),
+            "--experiment",
+            *arguments,
+        ],
+        stdout=StringIO(),
+        stderr=stderr,
+    )
+
+    assert code == ExitCode.INVALID_ARGUMENTS
+    assert expected_fragment in stderr.getvalue()
+
+
+def test_boolean_override_absence_preserves_json_value(monkeypatch, tmp_path: Path) -> None:
+    from validation.orchestration.configuration import parse_experiment_config
+    from validation.orchestration.models import ExecutionStatus
+
+    config_path = tmp_path / "experiment.json"
+    config_path.write_text("{}", encoding="utf-8")
+    original = parse_experiment_config(
+        {
+            "schema_version": 1,
+            "id": "baseline",
+            "name": "Baseline",
+            "cohort": {
+                "population": 10,
+                "seed": 1,
+                "modules": ["Hypertension"],
+                "vitals": True,
+                "mortality": False,
+            },
+            "simulators": [
+                {
+                    "kind": "synthea",
+                    "command": ["synthea"],
+                    "working_directory": str(tmp_path),
+                    "output_subdirectory": "synthea",
+                },
+                {
+                    "kind": "psynthea",
+                    "command": ["psynthea"],
+                    "working_directory": str(tmp_path),
+                    "output_subdirectory": "psynthea",
+                },
+            ],
+            "output_root": str(tmp_path / "runs"),
+        }
+    )
+    monkeypatch.setattr("validation.cli.load_experiment_config", lambda _: original)
+
+    captured: dict[str, object] = {}
+
+    class _Result:
+        status = ExecutionStatus.SUCCEEDED
+        error_message = None
+
+    class _Execution:
+        result = _Result()
+        workspace = None
+
+    def fake_run(config, *, run_id=None, module_name=None):
+        captured["config"] = config
+        return _Execution()
+
+    monkeypatch.setattr("validation.cli.run_full_experiment", fake_run)
+    monkeypatch.setattr("validation.cli._print_experiment_summary", lambda *_: None)
+
+    code = main(
+        [
+            "--config", str(config_path),
+            "--experiment",
+            "--population", "20",
+        ],
+        stdout=StringIO(),
+        stderr=StringIO(),
+    )
+
+    assert code == ExitCode.SUCCESS
+    resolved = captured["config"]
+    assert resolved.cohort.vitals is True
+    assert resolved.cohort.mortality is False

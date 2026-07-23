@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "source": {
+    "repository": "synthetichealth/synthea",
+    "local_repository": "/Users/pgt01/IRYCIS/synthea",
+    "commit": "2b0a55bab0ab9ae22204320c80f5880ceb8925aa",
+    "branch": "master",
+    "source_path": "src/main/resources/modules"
+  },
+  "import": {
+    "target_path": "resources/synthea/modules",
+    "copied_at": "2026-07-22T08:05:17Z",
+    "method": "rsync",
+    "total_files": 312,
+    "json_files": 242
+  }
+}

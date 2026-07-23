@@ -16,7 +16,7 @@ import argparse
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import IntEnum
 from importlib.metadata import PackageNotFoundError, version as package_version
 import json
@@ -44,6 +44,8 @@ from validation.config import (
 from validation.loaders import load_psynthea, load_synthea
 from validation.orchestration import (
     ExecutionStatus,
+    ExperimentConfig,
+    apply_experiment_overrides,
     ExperimentConfigurationError,
     ExperimentRunnerError,
     OrchestrationError,
@@ -162,6 +164,17 @@ class _ArgumentParser(argparse.ArgumentParser):
         )
 
 
+def _parse_iso_date(value: str) -> date:
+    """Parse an ISO-8601 calendar date for argparse."""
+
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"invalid ISO date {value!r}; expected YYYY-MM-DD"
+        ) from exc
+
+
 def build_parser(
     *,
     stdout: TextIO | None = None,
@@ -202,6 +215,113 @@ def build_parser(
             "Root-cause module scope for --experiment mode; required only "
             "for multi-module experiment configurations."
         ),
+    )
+    module_selection = parser.add_mutually_exclusive_group()
+    module_selection.add_argument(
+        "--module",
+        dest="modules",
+        action="append",
+        metavar="MODULE",
+        help=(
+            "Override a configured cohort module identifier; repeat to select "
+            "multiple modules. Mutually exclusive with --module-file. "
+            "Experiment mode only."
+        ),
+    )
+    module_selection.add_argument(
+        "--module-file",
+        dest="module_files",
+        action="append",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Override a cohort module JSON file; repeat to select multiple files. "
+            "Mutually exclusive with --module. Experiment mode only."
+        ),
+    )
+    parser.add_argument(
+        "--population",
+        type=int,
+        metavar="N",
+        help="Override cohort population size. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        metavar="INTEGER",
+        help="Override cohort random seed. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--reference-date",
+        type=_parse_iso_date,
+        metavar="YYYY-MM-DD",
+        help="Override the cohort reference date. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--min-age",
+        type=int,
+        metavar="YEARS",
+        help="Override the minimum generated age. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--max-age",
+        type=int,
+        metavar="YEARS",
+        help="Override the maximum generated age. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--step-days",
+        type=int,
+        metavar="DAYS",
+        help="Override the simulation time-step length. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--years-of-history",
+        type=int,
+        metavar="YEARS",
+        help="Override the generated clinical-history horizon. Experiment mode only.",
+    )
+    for option, destination, description in (
+        ("wellness-encounters", "wellness_encounters", "wellness encounters"),
+        ("vitals", "vitals", "vital-sign generation"),
+        ("mortality", "mortality", "mortality modelling"),
+        ("keystone", "keystone", "keystone compatibility"),
+        ("ground-truth", "ground_truth", "ground-truth export"),
+    ):
+        parser.add_argument(
+            f"--{option}",
+            dest=destination,
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help=(
+                f"Enable or disable {description}; use --{option} or "
+                f"--no-{option}. Experiment mode only."
+            ),
+        )
+    parser.add_argument(
+        "--output-format",
+        choices=("csv", "omop"),
+        help="Override the generated cohort output format. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--profile-file",
+        type=Path,
+        metavar="PATH",
+        help="Override the Psynthea population profile file. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--output-root",
+        type=Path,
+        metavar="PATH",
+        help="Override experiment output root directory. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--experiment-id",
+        help="Override the experiment identifier. Experiment mode only.",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        help="Override the human-readable experiment name. Experiment mode only.",
     )
     parser.add_argument(
         "--validate-only",
@@ -342,7 +462,7 @@ def run_validation(
 
 
 def run_full_experiment(
-    config: str | Path,
+    config: ExperimentConfig | str | Path,
     *,
     run_id: str | None = None,
     module_name: str | None = None,
@@ -385,12 +505,36 @@ def main(
 
         if (
             not args.experiment
-            and (args.run_id is not None or args.module_name is not None)
+            and any(
+                value is not None
+                for value in (
+                    args.run_id,
+                    args.module_name,
+                    args.modules,
+                    args.module_files,
+                    args.population,
+                    args.seed,
+                    args.reference_date,
+                    args.min_age,
+                    args.max_age,
+                    args.step_days,
+                    args.years_of_history,
+                    args.wellness_encounters,
+                    args.vitals,
+                    args.mortality,
+                    args.keystone,
+                    args.ground_truth,
+                    args.output_format,
+                    args.profile_file,
+                    args.output_root,
+                    args.experiment_id,
+                    args.experiment_name,
+                )
+            )
         ):
             parser.print_usage(stderr)
             print(
-                f"{parser.prog}: error: --run-id and --module-name require "
-                "--experiment.",
+                f"{parser.prog}: error: experiment overrides require --experiment.",
                 file=stderr,
             )
             return int(ExitCode.INVALID_ARGUMENTS)
@@ -398,6 +542,53 @@ def main(
         with _configured_logging(args.log_level, stderr):
             if args.experiment:
                 config = load_experiment_config(args.config)
+                has_overrides = any(
+                    value is not None
+                    for value in (
+                        args.experiment_id,
+                        args.experiment_name,
+                        args.population,
+                        args.seed,
+                        args.modules,
+                        args.module_files,
+                        args.reference_date,
+                        args.min_age,
+                        args.max_age,
+                        args.step_days,
+                        args.years_of_history,
+                        args.wellness_encounters,
+                        args.vitals,
+                        args.mortality,
+                        args.keystone,
+                        args.ground_truth,
+                        args.output_format,
+                        args.profile_file,
+                        args.output_root,
+                    )
+                )
+                if has_overrides:
+                    config = apply_experiment_overrides(
+                        config,
+                        experiment_id=args.experiment_id,
+                        experiment_name=args.experiment_name,
+                        population=args.population,
+                        seed=args.seed,
+                        modules=args.modules,
+                        module_files=args.module_files,
+                        reference_date=args.reference_date,
+                        min_age=args.min_age,
+                        max_age=args.max_age,
+                        step_days=args.step_days,
+                        years_of_history=args.years_of_history,
+                        wellness_encounters=args.wellness_encounters,
+                        vitals=args.vitals,
+                        mortality=args.mortality,
+                        keystone=args.keystone,
+                        ground_truth=args.ground_truth,
+                        output_format=args.output_format,
+                        profile_file=args.profile_file,
+                        output_root=args.output_root,
+                    )
 
                 if args.print_config:
                     print(dump_experiment_config(config), file=stdout)
@@ -410,7 +601,7 @@ def main(
                     return int(ExitCode.SUCCESS)
 
                 execution = run_full_experiment(
-                    args.config,
+                    config if has_overrides else args.config,
                     run_id=args.run_id,
                     module_name=args.module_name,
                 )

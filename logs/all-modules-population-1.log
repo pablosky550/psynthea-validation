@@ -1,0 +1,4 @@
+Pipeline error: psynthea exited with return code 1.
+Experiment completed: status=failed, run_id=run-20260722T112412266597Z-630ecc1faab3
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility/run-20260722T112412266597Z-630ecc1faab3
+Manifest: manifest.json

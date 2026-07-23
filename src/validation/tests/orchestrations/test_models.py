@@ -187,6 +187,41 @@ def test_cohort_normalizes_deduplicates_and_deep_freezes_values() -> None:
     with pytest.raises(TypeError):
         cohort.parameters["new"] = True
 
+def test_cohort_accepts_existing_modules_directory(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    cohort = _cohort(modules_dir=modules_dir)
+
+    assert cohort.modules_dir == modules_dir
+
+
+def test_cohort_rejects_missing_modules_directory(
+    tmp_path: Path,
+) -> None:
+    modules_dir = tmp_path / "missing-modules"
+
+    with pytest.raises(
+        ValueError,
+        match="modules_dir does not exist",
+    ):
+        _cohort(modules_dir=modules_dir)
+
+
+def test_cohort_rejects_modules_directory_pointing_to_file(
+    tmp_path: Path,
+) -> None:
+    modules_file = tmp_path / "modules.json"
+    modules_file.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="modules_dir must be a directory",
+    ):
+        _cohort(modules_dir=modules_file)
+
 
 def test_cohort_rejects_invalid_population_age_window_seed_and_mapping_keys() -> None:
     with pytest.raises(ValueError, match="greater than zero"):

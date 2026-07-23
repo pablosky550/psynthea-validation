@@ -12,7 +12,11 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
-from validation.orchestration.configuration import load_experiment_config
+from validation.orchestration.configuration import (
+    load_experiment_config,
+    resolve_cohort_modules,
+)
+
 from validation.orchestration.models import ExperimentConfig
 from validation.orchestration.orchestrator import OrchestrationExecution
 from validation.orchestration.production import build_production_orchestrator
@@ -112,16 +116,15 @@ def _resolve_module_name(
     config: ExperimentConfig,
     value: str | None,
 ) -> str:
-    configured_names = tuple(config.cohort.modules)
-    configured_files = tuple(config.cohort.module_files)
+    resolved_names = resolve_cohort_modules(config.cohort)
 
     file_module_names = tuple(
         module_file.stem
-        for module_file in configured_files
+        for module_file in config.cohort.module_files
     )
 
     configured = tuple(
-        dict.fromkeys((*configured_names, *file_module_names))
+        dict.fromkeys((*resolved_names, *file_module_names))
     )
 
     if value is None:

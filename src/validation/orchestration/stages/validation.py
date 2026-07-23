@@ -53,6 +53,8 @@ from validation.orchestration.orchestrator import (
     StageOutput,
 )
 
+from validation.orchestration.configuration import resolve_cohort_modules
+
 __all__ = [
     "ModuleComparator",
     "ValidationStageError",
@@ -217,21 +219,20 @@ class ValidationStageHandler:
         ] = []
 
         configured_module_names = tuple(
-            dict.fromkeys(
-                (
-                    *context.config.cohort.modules,
-                    *(
-                        module_file.stem
-                        for module_file in context.config.cohort.module_files
-                    ),
-                )
+        dict.fromkeys(
+            (
+                *resolve_cohort_modules(context.config.cohort),
+                *(
+                    module_file.stem
+                    for module_file in context.config.cohort.module_files
+                ),
             )
         )
+    )
 
         if not configured_module_names:
             raise ValidationStageError(
-                "Experiment cohort does not configure any modules "
-                "through 'modules' or 'module_files'."
+                "Experiment cohort does not resolve any executable modules."
             )
 
         for module_name in configured_module_names:

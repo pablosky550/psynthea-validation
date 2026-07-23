@@ -128,6 +128,44 @@ def test_parse_rejects_missing_required_fields() -> None:
     with pytest.raises(ExperimentConfigurationError, match="missing required fields: cohort"):
         parse_experiment_config(payload, base_directory=Path("configs"))
 
+def test_parse_resolves_modules_dir_relative_to_base_directory(
+    tmp_path: Path,
+) -> None:
+    base_directory = tmp_path / "configs"
+    base_directory.mkdir()
+
+    modules_dir = tmp_path / "resources" / "synthea" / "modules"
+    modules_dir.mkdir(parents=True)
+
+    payload = _payload()
+    cohort = payload["cohort"]
+    assert isinstance(cohort, dict)
+    cohort["modules_dir"] = "../resources/synthea/modules"
+
+    config = parse_experiment_config(
+        payload,
+        base_directory=base_directory,
+    )
+
+    assert config.cohort.modules_dir == modules_dir.resolve()
+
+
+def test_parse_rejects_missing_modules_dir(
+    tmp_path: Path,
+) -> None:
+    payload = _payload()
+    cohort = payload["cohort"]
+    assert isinstance(cohort, dict)
+    cohort["modules_dir"] = "missing/modules"
+
+    with pytest.raises(
+        ExperimentConfigurationError,
+        match="modules_dir does not exist",
+    ):
+        parse_experiment_config(
+            payload,
+            base_directory=tmp_path,
+        )
 
 def test_parse_rejects_invalid_reference_date() -> None:
     payload = _payload()

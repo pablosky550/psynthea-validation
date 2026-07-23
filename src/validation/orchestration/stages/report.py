@@ -35,10 +35,15 @@ __all__ = [
     "ScientificNarrativeFormatter",
 ]
 
-_REPORT_SCHEMA_VERSION: Final = "6.0.0"
+_REPORT_SCHEMA_VERSION: Final = "6.0.1"
 _REPORT_PRODUCER: Final = "scientific_report_stage"
 _REPORT_JSON_PATH: Final = "report/scientific_report.json"
 _REPORT_HTML_PATH: Final = "report/scientific_report.html"
+
+_COUNT_MATERIALITY_THRESHOLD: Final = 0.10
+_LOW_COUNT_THRESHOLD: Final = 20
+_LOW_COUNT_REVIEW_THRESHOLD: Final = 0.25
+_LOW_COUNT_MAX_ACCEPTABLE_ABSOLUTE_DIFFERENCE: Final = 1
 
 _REQUIRED_UPSTREAM_ARTIFACTS: Final = {
     ArtifactKind.VALIDATION_RESULT: "validation result",
@@ -106,6 +111,12 @@ class ScientificNarrativeFormatter:
         ready = bool(modules) and all(
             bool(module.get("research_use_ready")) for module in modules
         )
+        if self.decision == "NOT_COMPARABLE":
+            return (
+                "Equivalence could not be assessed because the persisted "
+                "reference evidence was incomplete. No conclusion of agreement "
+                "or disagreement between generators is scientifically defensible."
+            )
         if self.decision == "INCOMPLETE":
             return (
                 "The available evidence is incomplete and does not permit a "
@@ -260,6 +271,13 @@ class ScientificNarrativeFormatter:
 
     def overall_interpretation(self) -> str:
         """Return the main Discussion interpretation."""
+        if self.decision == "NOT_COMPARABLE":
+            return (
+                "The reference generator did not provide the minimum persisted "
+                "clinical evidence required for a valid comparison. Apparent "
+                "zero-versus-non-zero differences are therefore treated as "
+                "not assessable rather than as evidence of non-equivalence."
+            )
         if self.decision == "INCOMPLETE":
             return (
                 "The experiment did not provide a complete evidence chain, so "
@@ -280,6 +298,11 @@ class ScientificNarrativeFormatter:
 
     def clinical_implications(self) -> str:
         """Return a clinical-impact synthesis."""
+        if self.decision == "NOT_COMPARABLE":
+            return (
+                "No generator-level clinical implication can be inferred from "
+                "endpoints whose reference evidence is absent or insufficient."
+            )
         if not self.discrepancies:
             return (
                 "No material clinical implication was identified within the "
@@ -293,6 +316,13 @@ class ScientificNarrativeFormatter:
 
     def methodological_implications(self) -> str:
         """Return implications for validation design and interpretation."""
+        if self.decision == "NOT_COMPARABLE":
+            return (
+                "Reference completeness is a prerequisite for scientific comparison. "
+                "Empty or missing reference endpoints must be classified as not "
+                "assessable and must not be converted into evidence of generator "
+                "divergence."
+            )
         return (
             "Agreement in cohort size or successful pipeline execution must not be "
             "interpreted as scientific equivalence. Replacement requires concordant "
@@ -489,7 +519,7 @@ def _build_report_payload(
     knowledge = source_payloads[ArtifactKind.KNOWLEDGE_RESULT]
     root_cause = source_payloads[ArtifactKind.ROOT_CAUSE_RESULT]
 
-    decision = _decision(context)
+    decision = _decision(context, validation)
     analysis = _build_scientific_analysis(
         decision=decision,
         validation=validation,
@@ -621,7 +651,30 @@ def _configured_modules(
 
     return tuple(dict.fromkeys(value for value in values if value))
 
-def _decision(context: OrchestrationContext) -> str:
+def _reference_evidence_incomplete(validation: Mapping[str, Any]) -> bool:
+    """Return whether persisted reference evidence is insufficient for comparison.
+
+    This guard converts upstream ``reference_empty``/missing-reference states into
+    a report-level non-comparability decision. It deliberately does not infer that
+    a numeric zero is missing data unless upstream evidence explicitly says so.
+    """
+    tokens = {
+        "reference_empty",
+        "reference empty",
+        "reference_missing",
+        "reference missing",
+        "minimum reference clinical signal",
+        "insufficient reference",
+        "missing reference output",
+    }
+    text = " ".join(str(value) for value in _flatten_scalars(validation)).casefold()
+    return any(token in text for token in tokens)
+
+
+def _decision(
+    context: OrchestrationContext,
+    validation_payload: Mapping[str, Any] | None = None,
+) -> str:
     relevant = tuple(
         result
         for result in context.stage_results
@@ -634,6 +687,8 @@ def _decision(context: OrchestrationContext) -> str:
     )
     if any(result.status is not ExecutionStatus.SUCCEEDED for result in relevant):
         return "INCOMPLETE"
+    if validation_payload is not None and _reference_evidence_incomplete(validation_payload):
+        return "NOT_COMPARABLE"
 
     validation = context.stage_result(ExperimentStage.VALIDATION)
     knowledge = context.stage_result(ExperimentStage.KNOWLEDGE_ENRICHMENT)
@@ -856,7 +911,7 @@ def _render_html(payload: Mapping[str, Any]) -> str:
 <title>{escape(str(payload.get('experiment_name') or 'Scientific validation report'))}</title>
 <style>
 :root{{--ink:#172033;--muted:#657187;--line:#dbe2ea;--paper:#fff;--canvas:#f4f6f8;--navy:#183b63;--blue:#286da8;--green:#18734a;--amber:#9a5c00;--red:#a62b39;--soft-green:#edf8f2;--soft-amber:#fff7e8;--soft-red:#fff1f3;--soft-blue:#eef6fd;--soft:#f7f9fb}}
-*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.62 Georgia,"Times New Roman",serif}}main{{max-width:1080px;margin:auto;padding:30px 22px 76px}}header,.paper-section{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:32px 36px;margin-bottom:22px;box-shadow:0 2px 9px rgba(22,40,65,.035)}}h1,h2,h3,.eyebrow,.label,.badge,nav,.value,.verdict-value,.answer,summary,th{{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}h1{{font-size:2.15rem;line-height:1.16;margin:4px 0 8px}}h2{{font-size:1.42rem;color:var(--navy);margin:0 0 19px}}h3{{font-size:1.04rem;margin:21px 0 9px}}p{{margin:9px 0}}.eyebrow,.label{{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}}.eyebrow{{color:var(--blue)}}.muted{{color:var(--muted)}}.verdict-grid{{display:grid;grid-template-columns:minmax(220px,.58fr) 1.95fr;gap:20px;margin-top:23px}}.verdict-box{{padding:24px;border-radius:10px;background:{_decision_background(decision)};border:1px solid {_decision_border(decision)}}}.verdict-value{{font-size:2.2rem;font-weight:900;color:{_decision_color(decision)};margin:3px 0}}.answer{{font-size:1.08rem;font-weight:850;line-height:1.35}}.abstract{{border-left:5px solid {_decision_color(decision)};padding:18px 22px;background:#fafbfd;border-radius:8px}}.abstract p{{margin:7px 0}}.cards,.summary-grid,.figure-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}}.card,.finding-panel,.method-box,.discussion-block{{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}}.value{{display:block;font-size:1.08rem;font-weight:850;margin-top:3px;overflow-wrap:anywhere}}nav{{margin-top:22px;padding-top:17px;border-top:1px solid var(--line)}}nav a{{color:var(--blue);text-decoration:none;font-weight:700;margin:4px 18px 4px 0;display:inline-block}}table{{width:100%;border-collapse:collapse;font-size:.91rem}}th,td{{padding:10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}}th{{background:#f5f8fb;color:var(--navy);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}}.badge{{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.7rem;font-weight:850;text-transform:uppercase}}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{{background:var(--soft-green);color:var(--green)}}.badge-review,.badge-warning,.badge-high,.badge-partially-comparable,.badge-plausible{{background:var(--soft-amber);color:var(--amber)}}.badge-fail,.badge-failed,.badge-critical,.badge-blocking,.badge-urgent,.badge-not-demonstrated{{background:var(--soft-red);color:var(--red)}}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-not-assessable,.badge-out-of-scope,.badge-unverified,.badge-not-testable{{background:#eef1f5;color:#566273}}.delta-review{{color:var(--red);font-weight:850}}.delta-acceptable{{color:var(--green);font-weight:850}}.delta-neutral{{color:var(--muted);font-weight:850}}.evidence-profile{{display:grid;gap:10px;margin:13px 0 4px}}.evidence-row{{display:grid;grid-template-columns:minmax(155px,.75fr) 2fr minmax(90px,.45fr);gap:13px;align-items:center}}.evidence-track{{height:9px;background:#e7ebf0;border-radius:99px;overflow:hidden}}.evidence-fill{{height:100%;border-radius:99px;background:#7c8898}}.evidence-fill.pass{{background:var(--green)}}.evidence-fill.partial,.evidence-fill.review{{background:var(--amber)}}.evidence-fill.fail,.evidence-fill.incomplete{{background:var(--red)}}.evidence-label{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.85rem;font-weight:750}}.evidence-state{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.8rem;color:var(--muted);text-align:right}}.finding{{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}}.finding h3{{margin:7px 0 12px}}.finding-grid{{display:grid;grid-template-columns:1fr 1fr;gap:11px}}.finding-wide{{grid-column:1/-1}}.stat-list{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-top:8px}}.stat-item{{padding:9px 11px;background:var(--soft);border-radius:7px}}.callout{{background:var(--soft-blue);border-left:4px solid var(--blue);padding:15px 18px;border-radius:7px}}details{{border:1px solid var(--line);border-radius:8px;padding:12px 15px;margin:10px 0;background:#fff}}summary{{cursor:pointer;font-weight:780;color:var(--navy)}}.chart{{border:1px solid var(--line);border-radius:9px;padding:12px;background:#fff;overflow-x:auto}}.chart svg{{width:100%;height:auto;min-width:520px}}.matrix-pass td.status{{background:var(--soft-green)}}.matrix-review td.status{{background:var(--soft-amber)}}.matrix-fail td.status{{background:var(--soft-red)}}.recommendation{{display:grid;grid-template-columns:40px 1fr;gap:13px;padding:16px 0;border-bottom:1px solid var(--line)}}.rank{{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font:850 .9rem Inter,ui-sans-serif,system-ui,sans-serif}}ul{{padding-left:21px}}.empty{{color:var(--muted);font-style:italic}}.footer{{text-align:center;color:var(--muted);font:normal .8rem Inter,ui-sans-serif,system-ui,sans-serif;margin-top:20px}}@media(max-width:760px){{.verdict-grid,.finding-grid,.evidence-row{{grid-template-columns:1fr}}header,.paper-section{{padding:22px}}.finding-wide{{grid-column:auto}}.evidence-state{{text-align:left}}}}@media print{{body{{background:#fff}}main{{max-width:none;padding:0}}header,.paper-section{{box-shadow:none;break-inside:avoid}}nav{{display:none}}details{{break-inside:avoid}}}}
+*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.62 Georgia,"Times New Roman",serif}}main{{max-width:1080px;margin:auto;padding:30px 22px 76px}}header,.paper-section{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:32px 36px;margin-bottom:22px;box-shadow:0 2px 9px rgba(22,40,65,.035)}}h1,h2,h3,.eyebrow,.label,.badge,nav,.value,.verdict-value,.answer,summary,th{{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}h1{{font-size:2.15rem;line-height:1.16;margin:4px 0 8px}}h2{{font-size:1.42rem;color:var(--navy);margin:0 0 19px}}h3{{font-size:1.04rem;margin:21px 0 9px}}p{{margin:9px 0}}.eyebrow,.label{{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}}.eyebrow{{color:var(--blue)}}.muted{{color:var(--muted)}}.verdict-grid{{display:grid;grid-template-columns:minmax(220px,.58fr) 1.95fr;gap:20px;margin-top:23px}}.verdict-box{{padding:24px;border-radius:10px;background:{_decision_background(decision)};border:1px solid {_decision_border(decision)}}}.verdict-value{{font-size:2.2rem;font-weight:900;color:{_decision_color(decision)};margin:3px 0}}.answer{{font-size:1.08rem;font-weight:850;line-height:1.35}}.abstract{{border-left:5px solid {_decision_color(decision)};padding:18px 22px;background:#fafbfd;border-radius:8px}}.abstract p{{margin:7px 0}}.cards,.summary-grid,.figure-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}}.card,.finding-panel,.method-box,.discussion-block{{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}}.value{{display:block;font-size:1.08rem;font-weight:850;margin-top:3px;overflow-wrap:anywhere}}nav{{margin-top:22px;padding-top:17px;border-top:1px solid var(--line)}}nav a{{color:var(--blue);text-decoration:none;font-weight:700;margin:4px 18px 4px 0;display:inline-block}}table{{width:100%;border-collapse:collapse;font-size:.91rem}}th,td{{padding:10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}}th{{background:#f5f8fb;color:var(--navy);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}}.badge{{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.7rem;font-weight:850;text-transform:uppercase}}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{{background:var(--soft-green);color:var(--green)}}.badge-review,.badge-warning,.badge-high,.badge-partially-comparable,.badge-plausible,.badge-low-count{{background:var(--soft-amber);color:var(--amber)}}.badge-fail,.badge-failed,.badge-critical,.badge-blocking,.badge-urgent,.badge-not-demonstrated{{background:var(--soft-red);color:var(--red)}}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-not-assessable,.badge-out-of-scope,.badge-unverified,.badge-not-testable{{background:#eef1f5;color:#566273}}.delta-review{{color:var(--red);font-weight:850}}.delta-acceptable{{color:var(--green);font-weight:850}}.delta-neutral{{color:var(--muted);font-weight:850}}.evidence-profile{{display:grid;gap:10px;margin:13px 0 4px}}.evidence-row{{display:grid;grid-template-columns:minmax(155px,.75fr) 2fr minmax(90px,.45fr);gap:13px;align-items:center}}.evidence-track{{height:9px;background:#e7ebf0;border-radius:99px;overflow:hidden}}.evidence-fill{{height:100%;border-radius:99px;background:#7c8898}}.evidence-fill.pass{{background:var(--green)}}.evidence-fill.partial,.evidence-fill.review{{background:var(--amber)}}.evidence-fill.fail,.evidence-fill.incomplete{{background:var(--red)}}.evidence-label{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.85rem;font-weight:750}}.evidence-state{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.8rem;color:var(--muted);text-align:right}}.finding{{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}}.finding h3{{margin:7px 0 12px}}.finding-grid{{display:grid;grid-template-columns:1fr 1fr;gap:11px}}.finding-wide{{grid-column:1/-1}}.stat-list{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-top:8px}}.stat-item{{padding:9px 11px;background:var(--soft);border-radius:7px}}.callout{{background:var(--soft-blue);border-left:4px solid var(--blue);padding:15px 18px;border-radius:7px}}details{{border:1px solid var(--line);border-radius:8px;padding:12px 15px;margin:10px 0;background:#fff}}summary{{cursor:pointer;font-weight:780;color:var(--navy)}}.chart{{border:1px solid var(--line);border-radius:9px;padding:12px;background:#fff;overflow-x:auto}}.chart svg{{width:100%;height:auto;min-width:520px}}.matrix-pass td.status{{background:var(--soft-green)}}.matrix-review td.status,.matrix-low-count td.status{{background:var(--soft-amber)}}.matrix-fail td.status{{background:var(--soft-red)}}.recommendation{{display:grid;grid-template-columns:40px 1fr;gap:13px;padding:16px 0;border-bottom:1px solid var(--line)}}.rank{{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font:850 .9rem Inter,ui-sans-serif,system-ui,sans-serif}}ul{{padding-left:21px}}.empty{{color:var(--muted);font-style:italic}}.footer{{text-align:center;color:var(--muted);font:normal .8rem Inter,ui-sans-serif,system-ui,sans-serif;margin-top:20px}}@media(max-width:760px){{.verdict-grid,.finding-grid,.evidence-row{{grid-template-columns:1fr}}header,.paper-section{{padding:22px}}.finding-wide{{grid-column:auto}}.evidence-state{{text-align:left}}}}@media print{{body{{background:#fff}}main{{max-width:none;padding:0}}header,.paper-section{{box-shadow:none;break-inside:avoid}}nav{{display:none}}details{{break-inside:avoid}}}}
 </style>
 </head>
 <body><main>
@@ -894,6 +949,12 @@ def _scientific_conclusion_v13(
     modules = _mapping_sequence(knowledge.get("modules"))
     ready_count = sum(bool(module.get("research_use_ready")) for module in modules)
 
+    if decision == "NOT_COMPARABLE":
+        return (
+            "The reference evidence was incomplete, so scientific equivalence "
+            "could not be assessed. Apparent differences involving an empty "
+            "reference endpoint are not interpreted as generator discrepancies."
+        )
     if decision == "INCOMPLETE":
         return (
             "The experiment did not produce all required upstream products; "
@@ -967,19 +1028,18 @@ def _cohort_comparison_v13(validation: Mapping[str, Any]) -> str:
     synthea = _mapping(cohorts.get("synthea"))
     psynthea = _mapping(cohorts.get("psynthea"))
     rows: list[str] = []
+    reference_incomplete = _reference_evidence_incomplete(validation)
 
     for domain in _cohort_domains(validation):
         reference = synthea.get(domain)
         candidate = psynthea.get(domain)
-        delta, _ = _relative_difference_display(reference, candidate)
-        if _numeric_zero(reference) and _numeric_zero(candidate):
-            status = "not informative"
-        elif reference == candidate:
-            status = "pass"
-        elif _material_count_difference(reference, candidate):
-            status = "review"
+        category = _count_discrepancy_category(reference, candidate)
+        if reference_incomplete and category == "candidate_only_output":
+            delta = "N/A"
+            status = "not assessable"
         else:
-            status = "performed"
+            delta, _ = _relative_difference_display(reference, candidate)
+            status = _count_difference_status(reference, candidate)
         delta_class = _delta_class_for_status(status)
         rows.append(
             f'<tr><td>{escape(_humanize(domain))}</td>'
@@ -993,7 +1053,7 @@ def _cohort_comparison_v13(validation: Mapping[str, Any]) -> str:
         '<table><thead><tr><th>Clinical output</th><th>Synthea</th><th>Psynthea</th>'
         '<th>Relative difference</th><th>Scientific screening</th></tr></thead><tbody>'
         + "".join(rows)
-        + '</tbody></table><p class="muted">Colour represents the scientific screening status, not the mathematical sign of the difference. A non-zero difference that remains below the configured materiality threshold is shown as acceptable/performed.</p>'
+        + '</tbody></table><p class="muted">Colour represents the scientific screening status, not the mathematical sign of the difference. Low-count comparisons are shown in amber because relative percentages are unstable at small denominators; they are not promoted to material scientific discrepancies unless the low-count review threshold is met.</p>'
     )
 
 
@@ -1019,6 +1079,7 @@ def _scientific_discrepancies(
     candidate = _mapping(cohorts.get("psynthea"))
     findings = _all_knowledge_findings(knowledge)
     discrepancies: list[dict[str, Any]] = []
+    reference_incomplete = _reference_evidence_incomplete(validation)
 
     for domain in _cohort_domains(validation):
         synthea_value = reference.get(domain)
@@ -1028,6 +1089,8 @@ def _scientific_discrepancies(
 
         related = _related_findings(findings, domain)
         category = _count_discrepancy_category(synthea_value, psynthea_value)
+        if reference_incomplete and category == "candidate_only_output":
+            continue
         relative = _relative_difference(synthea_value, psynthea_value)
         severity = _count_severity(category, relative, related)
         score = _scientific_impact_score(
@@ -1057,7 +1120,8 @@ def _scientific_discrepancies(
         }
         discrepancies.append(discrepancy)
 
-    discrepancies.extend(_finding_only_discrepancies(findings, existing=discrepancies))
+    if not reference_incomplete:
+        discrepancies.extend(_finding_only_discrepancies(findings, existing=discrepancies))
     discrepancies.sort(key=lambda item: (-float(item.get("score", 0.0)), _severity_rank(item.get("severity")), str(item.get("title"))))
     return discrepancies[:8]
 
@@ -1180,7 +1244,7 @@ def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequ
             f'<td>{_badge(stats.get("validation_status"))}</td>'
             f'<td>{escape(_fmt(stats.get("significant_test_count")))}</td>'
             f'<td>{escape(_fmt(stats.get("significant_after_fdr_count")))}</td>'
-            f'<td>{_badge("performed" if stats.get("valid_for_statistical_comparison") else "incomplete")}</td></tr>'
+            f'<td>{_badge("performed" if stats.get("valid_for_statistical_comparison") else ("not assessable" if str(stats.get("validation_status") or "").casefold() in {"reference_empty", "reference_missing"} else "incomplete"))}</td></tr>'
         )
     forest = _forest_plot(discrepancies)
     return (
@@ -1365,17 +1429,53 @@ def _limitations_v13(knowledge: Mapping[str, Any], root: Mapping[str, Any], disc
         if q not in questions: questions.append(q)
     return '<h3>Limitations</h3>'+_html_list(limitations,"No material limitation was identified.")+'<h3>Outstanding research questions</h3>'+_html_list(questions,"No outstanding scientific question was identified.")
 
-def _material_count_difference(reference: Any, candidate: Any) -> bool:
-    try:
-        baseline = float(reference)
-        observed = float(candidate)
-    except (TypeError, ValueError):
-        return False
+def _count_difference_status(reference: Any, candidate: Any) -> str:
+    """Classify a cohort-level count comparison for scientific screening.
+
+    Low counts are handled separately because a one-record difference can
+    produce a large and unstable relative percentage. A ``low count`` result
+    is therefore displayed as amber and is not treated as a material
+    discrepancy by itself.
+
+    Zero-versus-non-zero comparisons remain ``review`` because they represent
+    output presence/absence rather than ordinary sampling variation.
+    """
+    baseline = _to_float(reference)
+    observed = _to_float(candidate)
+    if baseline is None or observed is None:
+        return "not evaluated"
+    if baseline < 0 or observed < 0:
+        return "not evaluated"
     if baseline == observed:
-        return False
-    if baseline == 0:
-        return observed != 0
-    return abs((observed - baseline) / baseline) >= 0.10
+        return "not informative" if baseline == 0 else "pass"
+    if baseline == 0 or observed == 0:
+        return "review"
+
+    absolute_difference = abs(observed - baseline)
+    relative_difference = absolute_difference / baseline
+
+    if min(baseline, observed) < _LOW_COUNT_THRESHOLD:
+        if (
+            absolute_difference
+            <= _LOW_COUNT_MAX_ACCEPTABLE_ABSOLUTE_DIFFERENCE
+        ):
+            return "low count"
+        return (
+            "review"
+            if relative_difference >= _LOW_COUNT_REVIEW_THRESHOLD
+            else "low count"
+        )
+
+    return (
+        "review"
+        if relative_difference >= _COUNT_MATERIALITY_THRESHOLD
+        else "performed"
+    )
+
+
+def _material_count_difference(reference: Any, candidate: Any) -> bool:
+    """Return whether a count comparison warrants material-discrepancy review."""
+    return _count_difference_status(reference, candidate) == "review"
 
 
 def _relative_difference(reference: Any, candidate: Any) -> float | None:
@@ -1635,6 +1735,8 @@ def _delta_class_for_status(status: str) -> str:
     normalized = status.casefold().replace("_", " ")
     if normalized in {"pass", "performed", "ready", "supported"}:
         return "delta-acceptable"
+    if normalized == "low count":
+        return "delta-neutral"
     if normalized in {"review", "fail", "failed", "blocking", "not demonstrated"}:
         return "delta-review"
     return "delta-neutral"
@@ -1685,6 +1787,8 @@ def _overall_evidence(
 
 
 def _functional_evidence_status(validation: Mapping[str, Any]) -> str:
+    if _reference_evidence_incomplete(validation):
+        return "reference incomplete"
     summaries = [
         _mapping(module.get("functional_summary"))
         for module in _mapping_sequence(validation.get("modules"))
@@ -1772,7 +1876,7 @@ def _research_readiness_label(decision: str, knowledge: Mapping[str, Any]) -> st
     ready = bool(modules) and all(bool(module.get("research_use_ready")) for module in modules)
     if decision == "PASS" and ready:
         return "Research ready within evaluated scope"
-    if decision == "INCOMPLETE":
+    if decision in {"INCOMPLETE", "NOT_COMPARABLE"}:
         return "Research readiness cannot be assessed"
     return "Not research ready"
 
@@ -1785,12 +1889,20 @@ def _research_readiness(
 ) -> str:
     knowledge_summary = _mapping(summary.get("knowledge"))
     blocking = [item for item in discrepancies if item.get("blocking")]
-    requirements = [
-        "Resolve or justify all blocking discrepancies.",
-        "Repeat the identical seeded cohort after remediation.",
-        "Replicate the experiment across independent seeds and cohort sizes.",
-        "Confirm that all predefined functional and statistical tolerances are met.",
-    ]
+    requirements = (
+        [
+            "Restore and verify the minimum reference clinical output required for comparison.",
+            "Repeat the identical seeded cohort after restoring reference completeness.",
+            "Confirm that affected endpoints are statistically and clinically assessable before interpreting generator differences.",
+        ]
+        if decision == "NOT_COMPARABLE"
+        else [
+            "Resolve or justify all blocking discrepancies.",
+            "Repeat the identical seeded cohort after remediation.",
+            "Replicate the experiment across independent seeds and cohort sizes.",
+            "Confirm that all predefined functional and statistical tolerances are met.",
+        ]
+    )
     return (
         '<div class="readiness">'
         f'<div class="cards">{_metric_card("Current status", _research_readiness_label(decision, knowledge))}'
@@ -1837,7 +1949,7 @@ def _contains_internal_identifier(value: str) -> bool:
 def _replacement_verdict(decision: str, knowledge: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
     ready = bool(_mapping_sequence(knowledge.get("modules"))) and all(bool(x.get("research_use_ready")) for x in _mapping_sequence(knowledge.get("modules")))
     if decision == "PASS" and ready and not discrepancies: return "Psynthea can replace Synthea within the evaluated scope"
-    if decision == "INCOMPLETE": return "Replacement cannot be assessed"
+    if decision in {"INCOMPLETE", "NOT_COMPARABLE"}: return "Replacement cannot be assessed"
     return "Psynthea cannot yet replace Synthea for the evaluated scope"
 
 
@@ -1874,6 +1986,7 @@ def _domain_concordance_matrix(
     reference = _mapping(cohorts.get("synthea"))
     candidate = _mapping(cohorts.get("psynthea"))
     rows: list[str] = []
+    reference_incomplete = _reference_evidence_incomplete(validation)
 
     for domain in domains:
         domain_findings = [
@@ -1902,7 +2015,10 @@ def _domain_concordance_matrix(
         category = str(
             count_finding.get("category") if count_finding else ""
         )
-        if category in {
+        if reference_incomplete and category == "candidate_only_output":
+            output = "not assessable"
+            volume = "not assessable"
+        elif category in {
             "missing_candidate_output",
             "candidate_only_output",
         }:
@@ -1910,28 +2026,32 @@ def _domain_concordance_matrix(
             volume = "not assessable"
         else:
             output = "pass"
-            if category == "volume_difference":
-                volume = "review"
-            elif (
-                _numeric_zero(reference.get(domain))
-                and _numeric_zero(candidate.get(domain))
-            ):
-                volume = "not informative"
-            else:
-                volume = "pass"
+            volume = _count_difference_status(
+                reference.get(domain),
+                candidate.get(domain),
+            )
 
         clinical = "review" if has_clinical_finding else "not evaluated"
         overall = (
-            "fail"
-            if output == "fail"
+            "not assessable"
+            if output == "not assessable"
             else (
-                "review"
-                if volume == "review" or clinical == "review"
-                else "pass"
+                "fail"
+                if output == "fail"
+                else (
+                    "review"
+                    if volume == "review" or clinical == "review"
+                    else (
+                        "low count"
+                        if volume == "low count"
+                        else "pass"
+                    )
+                )
             )
         )
+        matrix_class = "review" if overall in {"low count", "not assessable"} else overall
         rows.append(
-            f'<tr class="matrix-{escape(overall)}">'
+            f'<tr class="matrix-{escape(matrix_class)}">'
             f'<td>{escape(_humanize(domain))}</td>'
             f'<td class="status">{_badge(output)}</td>'
             f'<td class="status">{_badge(volume)}</td>'
@@ -2250,6 +2370,8 @@ def _evidence_profile_row(label: str, status: str) -> str:
         "pass-with-warning": "partial",
         "inconclusive": "incomplete",
         "not-testable": "incomplete",
+        "reference-incomplete": "incomplete",
+        "reference-empty": "incomplete",
     }.get(css, css)
     widths = {
         "pass": 100,
@@ -2425,15 +2547,15 @@ def _badge(value: Any) -> str:
 
 
 def _decision_color(decision: str) -> str:
-    return {"PASS":"var(--green)","REVIEW":"var(--amber)","INCOMPLETE":"var(--red)"}.get(decision,"var(--muted)")
+    return {"PASS":"var(--green)","REVIEW":"var(--amber)","NOT_COMPARABLE":"var(--amber)","INCOMPLETE":"var(--red)"}.get(decision,"var(--muted)")
 
 
 def _decision_background(decision: str) -> str:
-    return {"PASS":"var(--soft-green)","REVIEW":"var(--soft-amber)","INCOMPLETE":"var(--soft-red)"}.get(decision,"#f2f4f7")
+    return {"PASS":"var(--soft-green)","REVIEW":"var(--soft-amber)","NOT_COMPARABLE":"var(--soft-amber)","INCOMPLETE":"var(--soft-red)"}.get(decision,"#f2f4f7")
 
 
 def _decision_border(decision: str) -> str:
-    return {"PASS":"#b9dec9","REVIEW":"#efd09b","INCOMPLETE":"#edbbc0"}.get(decision,"var(--line)")
+    return {"PASS":"#b9dec9","REVIEW":"#efd09b","NOT_COMPARABLE":"#efd09b","INCOMPLETE":"#edbbc0"}.get(decision,"var(--line)")
 
 
 def _comparison_status(a: Any,b: Any) -> str:

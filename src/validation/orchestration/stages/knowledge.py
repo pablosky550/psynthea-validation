@@ -70,6 +70,8 @@ from validation.orchestration.stage_products import (
     ScientificStageProductStore,
 )
 
+from validation.orchestration.configuration import resolve_cohort_modules
+
 __all__ = [
     "InterpretationWorkflowFactory",
     "KnowledgeStageError",
@@ -1326,7 +1328,7 @@ def _validate_validation_payload(
     configured_modules = tuple(
         dict.fromkeys(
             (
-                *context.config.cohort.modules,
+                *resolve_cohort_modules(context.config.cohort),
                 *(
                     module_file.stem
                     for module_file
@@ -1338,9 +1340,7 @@ def _validate_validation_payload(
 
     if not configured_modules:
         raise KnowledgeStageError(
-            "ExperimentConfig must define at least "
-            "one module through 'modules' or "
-            "'module_files'."
+            "ExperimentConfig does not resolve any executable modules."
         )
 
     observed_modules = tuple(

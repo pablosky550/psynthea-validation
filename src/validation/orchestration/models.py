@@ -37,6 +37,7 @@ __all__ = [
     "ExperimentConfig",
     "ExperimentResult",
     "ExperimentStage",
+    "ModuleSelectionMode",
     "PipelineStageResult",
     "ReportFormat",
     "SimulatorConfig",
@@ -109,6 +110,11 @@ class ReportFormat(str, Enum):
     PDF = "pdf"
     JSON = "json"
 
+class ModuleSelectionMode(str, Enum):
+    """Strategy used to select modules for a cohort execution."""
+
+    EXPLICIT = "explicit"
+    ALL = "all"
 
 # =============================================================================
 # Validation and normalization helpers
@@ -450,9 +456,16 @@ def _validate_execution_window(
 class CohortConfig:
     """Scientific cohort parameters shared by both simulator executions.
 
-    Fields common to both simulators remain first. Psynthea-specific compatibility
-    controls are explicit, immutable and optional so legacy experiment files retain
-    their previous behaviour until those controls are deliberately enabled.
+    Module selection supports two explicit modes:
+
+    ``explicit``
+        Execute the modules named in ``modules`` and/or supplied through
+        ``module_files``.
+
+    ``all``
+        Discover every supported root module from ``modules_dir``. Concrete
+        discovery is intentionally deferred to the orchestration module
+        resolver so this model remains independent from filesystem execution.
 
     ``parameters`` remains in its historical positional location for backwards
     compatibility. New code should instantiate this model with keyword arguments.
@@ -466,8 +479,10 @@ class CohortConfig:
     max_age: int | None = None
     parameters: Mapping[str, Any] = field(default_factory=dict)
 
-    # Optional module sources and generation controls introduced for Psynthea 0.1.0.
     module_files: tuple[Path, ...] = ()
+    module_selection: ModuleSelectionMode = ModuleSelectionMode.EXPLICIT
+    modules_dir: Path | None = None
+
     step_days: int | None = None
     years_of_history: int | None = None
     wellness_encounters: bool = False
@@ -490,6 +505,11 @@ class CohortConfig:
         if not -(2**63) <= self.seed <= (2**63 - 1):
             raise ValueError("seed must fit in a signed 64-bit integer.")
 
+        selection = _require_enum(
+            self.module_selection,
+            ModuleSelectionMode,
+            "module_selection",
+        )
         modules = _normalize_text_tuple(
             self.modules,
             "modules",
@@ -501,10 +521,33 @@ class CohortConfig:
             "module_files",
             relative=False,
         )
-        if not modules and not module_files:
-            raise ValueError("At least one module or module_file must be configured.")
+        modules_dir = (
+            None
+            if self.modules_dir is None
+            else _normalize_path(self.modules_dir, "modules_dir")
+        )
+
+        if selection is ModuleSelectionMode.EXPLICIT:
+            if not modules and not module_files:
+                raise ValueError(
+                    "Explicit module selection requires at least one module "
+                    "or module_file."
+                )
+        elif selection is ModuleSelectionMode.ALL:
+            if modules or module_files:
+                raise ValueError(
+                    "All-module selection must not define modules or "
+                    "module_files."
+                )
+            if modules_dir is None:
+                raise ValueError(
+                    "All-module selection requires modules_dir."
+                )
+
+        object.__setattr__(self, "module_selection", selection)
         object.__setattr__(self, "modules", modules)
         object.__setattr__(self, "module_files", module_files)
+        object.__setattr__(self, "modules_dir", modules_dir)
 
         object.__setattr__(
             self,
@@ -521,7 +564,11 @@ class CohortConfig:
             "max_age",
             _optional_non_negative_integer(self.max_age, "max_age"),
         )
-        if self.min_age is not None and self.max_age is not None and self.min_age > self.max_age:
+        if (
+            self.min_age is not None
+            and self.max_age is not None
+            and self.min_age > self.max_age
+        ):
             raise ValueError("min_age must not exceed max_age.")
 
         object.__setattr__(
@@ -532,7 +579,10 @@ class CohortConfig:
         object.__setattr__(
             self,
             "years_of_history",
-            _optional_positive_integer(self.years_of_history, "years_of_history"),
+            _optional_positive_integer(
+                self.years_of_history,
+                "years_of_history",
+            ),
         )
 
         for field_name in (
@@ -548,9 +598,14 @@ class CohortConfig:
                 _require_boolean(getattr(self, field_name), field_name),
             )
 
-        output_format = _require_identifier(self.output_format, "output_format").lower()
+        output_format = _require_identifier(
+            self.output_format,
+            "output_format",
+        ).lower()
         if output_format not in {"csv", "omop"}:
-            raise ValueError("output_format must be either 'csv' or 'omop'.")
+            raise ValueError(
+                "output_format must be either 'csv' or 'omop'."
+            )
         object.__setattr__(self, "output_format", output_format)
 
         profile_file = (
@@ -564,7 +619,6 @@ class CohortConfig:
             "parameters",
             _freeze_mapping(self.parameters, "parameters"),
         )
-
 
 @dataclass(frozen=True, slots=True)
 class SimulatorConfig:

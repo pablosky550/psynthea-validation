@@ -10,6 +10,7 @@ composition.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import date
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import Any, Final, NoReturn
 from validation.orchestration.models import (
     CohortConfig,
     ExperimentConfig,
+    ModuleSelectionMode,
     ReportFormat,
     SimulatorConfig,
     SimulatorKind,
@@ -25,6 +27,7 @@ from validation.orchestration.models import (
 
 __all__ = [
     "ExperimentConfigurationError",
+    "apply_experiment_overrides",
     "dump_experiment_config",
     "experiment_config_to_dict",
     "load_experiment_config",
@@ -53,6 +56,8 @@ _COHORT_FIELDS: Final = frozenset(
     {
         "population",
         "seed",
+        "module_selection",
+        "modules_dir",
         "modules",
         "module_files",
         "reference_date",
@@ -130,6 +135,165 @@ def load_experiment_config(path: Path | str) -> ExperimentConfig:
         base_directory=configuration_path.parent,
     )
 
+
+
+def apply_experiment_overrides(
+    config: ExperimentConfig,
+    *,
+    experiment_id: str | None = None,
+    experiment_name: str | None = None,
+    population: int | None = None,
+    seed: int | None = None,
+    modules: Sequence[str] | None = None,
+    module_files: Sequence[Path | str] | None = None,
+    reference_date: date | None = None,
+    min_age: int | None = None,
+    max_age: int | None = None,
+    step_days: int | None = None,
+    years_of_history: int | None = None,
+    wellness_encounters: bool | None = None,
+    vitals: bool | None = None,
+    mortality: bool | None = None,
+    keystone: bool | None = None,
+    ground_truth: bool | None = None,
+    output_format: str | None = None,
+    profile_file: Path | str | None = None,
+    output_root: Path | str | None = None,
+) -> ExperimentConfig:
+    """Return ``config`` with explicit user-facing overrides applied.
+
+    ``None`` means "retain the JSON value".  Overrides are intentionally
+    restricted to experiment identity, cohort-generation controls and the
+    output root.  Simulator commands, statistical thresholds and arbitrary
+    metadata remain configuration-file concerns because exposing them as
+    generic command-line inputs would weaken reproducibility and auditability.
+
+    Module identifiers and module files are alternative module-selection
+    mechanisms.  Supplying one clears the other; supplying both in the same
+    call is rejected as ambiguous.
+    """
+
+    if not isinstance(config, ExperimentConfig):
+        raise TypeError("config must be an ExperimentConfig.")
+
+    if modules is not None and module_files is not None:
+        raise ExperimentConfigurationError(
+            "modules and module_files overrides are mutually exclusive."
+        )
+
+    cohort_changes: dict[str, Any] = {}
+    _set_if_not_none(cohort_changes, "population", population)
+    _set_if_not_none(cohort_changes, "seed", seed)
+    _set_if_not_none(cohort_changes, "reference_date", reference_date)
+    _set_if_not_none(cohort_changes, "min_age", min_age)
+    _set_if_not_none(cohort_changes, "max_age", max_age)
+    _set_if_not_none(cohort_changes, "step_days", step_days)
+    _set_if_not_none(cohort_changes, "years_of_history", years_of_history)
+    _set_if_not_none(
+        cohort_changes,
+        "wellness_encounters",
+        wellness_encounters,
+    )
+    _set_if_not_none(cohort_changes, "vitals", vitals)
+    _set_if_not_none(cohort_changes, "mortality", mortality)
+    _set_if_not_none(cohort_changes, "keystone", keystone)
+    _set_if_not_none(cohort_changes, "ground_truth", ground_truth)
+    _set_if_not_none(cohort_changes, "output_format", output_format)
+
+    if modules is not None:
+        cohort_changes["modules"] = _override_text_sequence(
+            modules,
+            field_name="modules",
+        )
+        cohort_changes["module_files"] = ()
+
+    if module_files is not None:
+        cohort_changes["module_files"] = _override_path_sequence(
+            module_files,
+            field_name="module_files",
+        )
+        cohort_changes["modules"] = ()
+
+    if profile_file is not None:
+        cohort_changes["profile_file"] = _override_path(
+            profile_file,
+            field_name="profile_file",
+        )
+
+    try:
+        cohort = (
+            replace(config.cohort, **cohort_changes)
+            if cohort_changes
+            else config.cohort
+        )
+
+        root_changes: dict[str, Any] = {"cohort": cohort}
+        _set_if_not_none(root_changes, "id", experiment_id)
+        _set_if_not_none(root_changes, "name", experiment_name)
+        if output_root is not None:
+            root_changes["output_root"] = _override_path(
+                output_root,
+                field_name="output_root",
+            )
+
+        return replace(config, **root_changes)
+    except ExperimentConfigurationError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise ExperimentConfigurationError(
+            f"Invalid experiment override: {exc}"
+        ) from exc
+
+
+def _set_if_not_none(
+    target: dict[str, Any],
+    field_name: str,
+    value: Any,
+) -> None:
+    """Assign an explicit override while preserving ``None`` as no-op."""
+
+    if value is not None:
+        target[field_name] = value
+
+
+def _override_text_sequence(
+    values: Sequence[str],
+    *,
+    field_name: str,
+) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise ExperimentConfigurationError(
+            f"{field_name} override must be a sequence of strings."
+        )
+    return tuple(values)
+
+
+def _override_path_sequence(
+    values: Sequence[Path | str],
+    *,
+    field_name: str,
+) -> tuple[Path, ...]:
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise ExperimentConfigurationError(
+            f"{field_name} override must be a sequence of paths."
+        )
+    return tuple(
+        _override_path(value, field_name=f"{field_name}[{index}]")
+        for index, value in enumerate(values)
+    )
+
+
+def _override_path(value: Path | str, *, field_name: str) -> Path:
+    if not isinstance(value, (str, Path)):
+        raise ExperimentConfigurationError(
+            f"{field_name} override must be a path or string."
+        )
+    try:
+        return Path(value).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ExperimentConfigurationError(
+            f"Unable to resolve {field_name} override {value!r}: {exc}"
+        ) from exc
 
 def parse_experiment_config(
     payload: Mapping[str, Any],
@@ -238,6 +402,12 @@ def experiment_config_to_dict(
         "cohort": {
             "population": config.cohort.population,
             "seed": config.cohort.seed,
+            "module_selection": config.cohort.module_selection.value,
+            "modules_dir": (
+                str(config.cohort.modules_dir)
+                if config.cohort.modules_dir is not None
+                else None
+            ),
             "modules": list(config.cohort.modules),
             "module_files": [
                 str(path) for path in config.cohort.module_files
@@ -303,6 +473,39 @@ def dump_experiment_config(
         allow_nan=False,
     ) + "\n"
 
+def resolve_cohort_modules(
+    cohort: CohortConfig,
+) -> tuple[str, ...]:
+    if cohort.module_selection is ModuleSelectionMode.EXPLICIT:
+        return cohort.modules
+
+    if cohort.modules_dir is None:
+        raise ExperimentConfigurationError(
+            "All-module selection requires modules_dir."
+        )
+
+    modules_dir = cohort.modules_dir
+
+    if not modules_dir.is_dir():
+        raise ExperimentConfigurationError(
+            f"Modules directory does not exist: {modules_dir}"
+        )
+
+    module_names = tuple(
+        sorted(
+            path.stem
+            for path in modules_dir.glob("*.json")
+            if path.is_file()
+        )
+    )
+
+    if not module_names:
+        raise ExperimentConfigurationError(
+            f"No root modules were found in: {modules_dir}"
+        )
+
+    return module_names
+
 
 def _parse_cohort(
     payload: Any,
@@ -310,13 +513,11 @@ def _parse_cohort(
     base_directory: Path | None,
 ) -> CohortConfig:
     cohort = _mapping(payload, "configuration.cohort")
-    _reject_unknown(cohort, _COHORT_FIELDS, "configuration.cohort")
-
-    if "modules" not in cohort and "module_files" not in cohort:
-        raise ExperimentConfigurationError(
-            "configuration.cohort requires at least one of: "
-            "modules or module_files."
-        )
+    _reject_unknown(
+        cohort,
+        _COHORT_FIELDS,
+        "configuration.cohort",
+    )
 
     reference_date = cohort.get("reference_date")
     if reference_date is not None:
@@ -333,11 +534,22 @@ def _parse_cohort(
                 "ISO-8601 date."
             ) from exc
 
+    module_selection = _enum(
+        cohort.get(
+            "module_selection",
+            ModuleSelectionMode.EXPLICIT.value,
+        ),
+        ModuleSelectionMode,
+        "configuration.cohort.module_selection",
+    )
+
     module_files = tuple(
         _resolve_path(
             item,
             base_directory=base_directory,
-            field_name=f"configuration.cohort.module_files[{index}]",
+            field_name=(
+                f"configuration.cohort.module_files[{index}]"
+            ),
         )
         for index, item in enumerate(
             _sequence(
@@ -345,6 +557,17 @@ def _parse_cohort(
                 "configuration.cohort.module_files",
             )
         )
+    )
+
+    modules_dir_value = cohort.get("modules_dir")
+    modules_dir = (
+        _resolve_path(
+            modules_dir_value,
+            base_directory=base_directory,
+            field_name="configuration.cohort.modules_dir",
+        )
+        if modules_dir_value is not None
+        else None
     )
 
     profile_file_value = cohort.get("profile_file")
@@ -384,6 +607,8 @@ def _parse_cohort(
                 "configuration.cohort.parameters",
             ),
             module_files=module_files,
+            module_selection=module_selection,
+            modules_dir=modules_dir,
             step_days=cohort.get("step_days"),
             years_of_history=cohort.get("years_of_history"),
             wellness_encounters=cohort.get(

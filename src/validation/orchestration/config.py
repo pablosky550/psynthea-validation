@@ -14,9 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from .exceptions import ExperimentConfigurationError, ExperimentConfigurationIOError
+
 from .models import (
     CohortConfig,
     ExperimentConfig,
+    ModuleSelectionMode,
     ReportFormat,
     SimulatorConfig,
     SimulatorKind,
@@ -49,6 +51,8 @@ _COHORT_FIELDS = frozenset(
     {
         "population",
         "seed",
+        "module_selection",
+        "modules_dir",
         "modules",
         "module_files",
         "reference_date",
@@ -66,6 +70,7 @@ _COHORT_FIELDS = frozenset(
         "parameters",
     }
 )
+
 _SIMULATOR_FIELDS = frozenset(
     {
         "kind",
@@ -177,14 +182,12 @@ def parse_experiment_config(
         ) from error
 
 
-def _parse_cohort(payload: Mapping[str, Any], base: Path) -> CohortConfig:
+def _parse_cohort(
+    payload: Mapping[str, Any],
+    base: Path,
+) -> CohortConfig:
     _reject_unknown_fields(payload, _COHORT_FIELDS, "cohort")
     _require_fields(payload, {"population", "seed"}, "cohort")
-    if "modules" not in payload and "module_files" not in payload:
-        raise ExperimentConfigurationError(
-            "cohort requires at least one of: modules or module_files.",
-            context={"field": "cohort"},
-        )
 
     reference_date = payload.get("reference_date")
     parsed_reference_date: date | None = None
@@ -195,31 +198,133 @@ def _parse_cohort(payload: Mapping[str, Any], base: Path) -> CohortConfig:
         except ValueError as error:
             raise ExperimentConfigurationError(
                 "cohort.reference_date must use ISO format YYYY-MM-DD.",
-                context={"field": "cohort.reference_date", "value": text},
+                context={
+                    "field": "cohort.reference_date",
+                    "value": text,
+                },
             ) from error
+
+    selection_value = _string(
+        payload.get(
+            "module_selection",
+            ModuleSelectionMode.EXPLICIT.value,
+        ),
+        "cohort.module_selection",
+    )
+    try:
+        module_selection = ModuleSelectionMode(selection_value)
+    except ValueError as error:
+        allowed = ", ".join(
+            item.value for item in ModuleSelectionMode
+        )
+        raise ExperimentConfigurationError(
+            "cohort.module_selection must be one of: "
+            f"{allowed}.",
+            context={
+                "field": "cohort.module_selection",
+                "value": selection_value,
+            },
+        ) from error
+
+    module_files = tuple(
+        _resolve_path(
+            item,
+            base,
+            f"cohort.module_files[{index}]",
+        )
+        for index, item in enumerate(
+            _string_sequence(
+                payload.get("module_files", []),
+                "cohort.module_files",
+            )
+        )
+    )
+
+    modules_dir_value = payload.get("modules_dir")
+    modules_dir = (
+        None
+        if modules_dir_value is None
+        else _resolve_path(
+            modules_dir_value,
+            base,
+            "cohort.modules_dir",
+        )
+    )
+
+    profile_file_value = payload.get("profile_file")
+    profile_file = (
+        None
+        if profile_file_value is None
+        else _resolve_path(
+            profile_file_value,
+            base,
+            "cohort.profile_file",
+        )
+    )
 
     try:
         return CohortConfig(
-            population=_integer(payload["population"], "cohort.population"),
-            seed=_integer(payload["seed"], "cohort.seed"),
-            modules=_string_sequence(payload.get("modules", []), "cohort.modules"),
-            reference_date=parsed_reference_date,
-            min_age=_optional_integer(payload.get("min_age"), "cohort.min_age"),
-            max_age=_optional_integer(payload.get("max_age"), "cohort.max_age"),
-            parameters=_mapping(payload.get("parameters", {}), "cohort.parameters"),
-            module_files=tuple(
-                _resolve_path(item, base, "cohort.module_files")
-                for item in payload.get("module_files", [])
+            population=_integer(
+                payload["population"],
+                "cohort.population",
             ),
-            step_days=_optional_integer(payload.get("step_days"), "cohort.step_days"),
-            years_of_history=_optional_integer(payload.get("years_of_history"), "cohort.years_of_history"),
-            wellness_encounters=_boolean(payload.get("wellness_encounters", False),"cohort.wellness_encounters"),
-            vitals=_boolean(payload.get("vitals", False),"cohort.vitals"),
-            mortality=_boolean(payload.get("mortality", False),"cohort.mortality"),
-            keystone=_boolean(payload.get("keystone", False),"cohort.keystone"),
-            ground_truth=_boolean(payload.get("ground_truth", False),"cohort.ground_truth"),
-            output_format=_string(payload.get("output_format","csv"),"cohort.output_format"),
-            profile_file=None if payload.get("profile_file") is None else _resolve_path(payload["profile_file"], base, "cohort.profile_file"),
+            seed=_integer(
+                payload["seed"],
+                "cohort.seed",
+            ),
+            modules=_string_sequence(
+                payload.get("modules", []),
+                "cohort.modules",
+            ),
+            reference_date=parsed_reference_date,
+            min_age=_optional_integer(
+                payload.get("min_age"),
+                "cohort.min_age",
+            ),
+            max_age=_optional_integer(
+                payload.get("max_age"),
+                "cohort.max_age",
+            ),
+            parameters=_mapping(
+                payload.get("parameters", {}),
+                "cohort.parameters",
+            ),
+            module_files=module_files,
+            module_selection=module_selection,
+            modules_dir=modules_dir,
+            step_days=_optional_integer(
+                payload.get("step_days"),
+                "cohort.step_days",
+            ),
+            years_of_history=_optional_integer(
+                payload.get("years_of_history"),
+                "cohort.years_of_history",
+            ),
+            wellness_encounters=_boolean(
+                payload.get("wellness_encounters", False),
+                "cohort.wellness_encounters",
+            ),
+            vitals=_boolean(
+                payload.get("vitals", False),
+                "cohort.vitals",
+            ),
+            mortality=_boolean(
+                payload.get("mortality", False),
+                "cohort.mortality",
+            ),
+            keystone=_boolean(
+                payload.get("keystone", False),
+                "cohort.keystone",
+            ),
+            ground_truth=_boolean(
+                payload.get("ground_truth", False),
+                "cohort.ground_truth",
+            ),
+            output_format=_string(
+                payload.get("output_format", "csv"),
+                "cohort.output_format",
+            ),
+            profile_file=profile_file,
         )
     except (TypeError, ValueError) as error:
         raise ExperimentConfigurationError(

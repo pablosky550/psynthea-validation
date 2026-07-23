@@ -63,6 +63,8 @@ __all__ = [
 ]
 
 
+from validation.orchestration.configuration import resolve_cohort_modules
+
 # =============================================================================
 # Constants and errors
 # =============================================================================
@@ -72,6 +74,7 @@ _ARGUMENT_TEMPLATE_KEY: Final = "command_arguments"
 _MODULE_SEPARATOR_KEY: Final = "module_separator"
 _INHERIT_ENVIRONMENT_KEY: Final = "inherit_environment"
 _DISCOVER_OUTPUTS_KEY: Final = "discover_outputs"
+_MODULES_DIR_OPTIONS: Final = ("-d", "--modules-dir")
 
 _ALLOWED_ARGUMENT_KEYS: Final = frozenset(
     {
@@ -88,6 +91,7 @@ _ALLOWED_PLACEHOLDERS: Final = frozenset(
         "seed",
         "modules",
         "module",
+        "modules_dir",
         "module_files",
         "output_dir",
         "reference_date",
@@ -144,6 +148,7 @@ _CLI_PROFILES: Final[Mapping[SimulatorKind, tuple[_ArgumentSpec, ...]]] = Mappin
             _ArgumentSpec("subcommand", None, required=True),
             _ArgumentSpec("population", "-p", required=True),
             _ArgumentSpec("modules", "-m", _ArgumentMode.REPEAT),
+            _ArgumentSpec("modules_dir", "-d"),
             _ArgumentSpec("module_files", "--module-file", _ArgumentMode.REPEAT),
             _ArgumentSpec("output_dir", "-o", required=True),
             _ArgumentSpec("seed", "--seed", required=True),
@@ -254,23 +259,38 @@ def _cohort_context(
 ) -> Mapping[str, Any]:
     """Build the complete deterministic CLI context for both simulators.
 
+    The concrete module set is resolved once through
+    :func:`resolve_cohort_modules`, ensuring that ``explicit`` and ``all``
+    selections produce the same canonical runner context.
+
     ``modules`` is the scalar representation used by Synthea and custom
-    templates. When modules are configured only through ``module_files``, the
-    logical names are derived from their file stems. ``module_values`` remains
-    restricted to explicitly configured module names so Psynthea does not emit
-    both ``-m`` and ``--module-file`` for the same module.
+    templates. ``module_values`` is the repeated representation consumed by
+    Psynthea. Explicit ``module_files`` remain separate so they are emitted
+    through ``--module-file`` rather than duplicated as named modules.
     """
 
-    module_values = tuple(dict.fromkeys(cohort.modules))
+    resolved_modules = resolve_cohort_modules(cohort)
+
     module_files = tuple(
         _path_text(Path(module_file))
         for module_file in dict.fromkeys(cohort.module_files)
     )
 
-    logical_modules = module_values or tuple(
-        Path(module_file).stem for module_file in module_files
-    )
-    modules = module_separator.join(dict.fromkeys(logical_modules))
+    if cohort.module_files:
+        module_values = tuple(dict.fromkeys(cohort.modules))
+        logical_modules = tuple(
+            dict.fromkeys(
+                (
+                    *module_values,
+                    *(Path(module_file).stem for module_file in module_files),
+                )
+            )
+        )
+    else:
+        module_values = tuple(dict.fromkeys(resolved_modules))
+        logical_modules = module_values
+
+    modules = module_separator.join(logical_modules)
 
     profile_file = getattr(cohort, "profile_file", None)
     if profile_file is None:
@@ -283,6 +303,11 @@ def _cohort_context(
             "modules": modules,
             "module": modules,
             "module_values": module_values,
+            "modules_dir": (
+                _path_text(cohort.modules_dir)
+                if cohort.modules_dir is not None
+                else None
+            ),
             "module_files": module_files,
             "output_dir": _path_text(output_directory),
             "reference_date": (
@@ -300,8 +325,16 @@ def _cohort_context(
                 if cohort.max_age is not None
                 else None
             ),
-            "step_days": str(cohort.step_days),
-            "years_of_history": str(cohort.years_of_history),
+            "step_days": (
+                str(cohort.step_days)
+                if cohort.step_days is not None
+                else None
+            ),
+            "years_of_history": (
+                str(cohort.years_of_history)
+                if cohort.years_of_history is not None
+                else None
+            ),
             "output_format": cohort.output_format,
             "profile_file": (
                 _path_text(Path(profile_file))
@@ -449,6 +482,30 @@ def _render_template(
         rendered.append(_require_text(value, f"rendered command argument {index}"))
     return tuple(rendered)
 
+
+def _contains_cli_option(
+    arguments: Sequence[str],
+    options: Sequence[str],
+) -> bool:
+    """Return whether rendered arguments already declare a CLI option.
+
+    Both separated and GNU-style assignment forms are recognised:
+
+    ``--modules-dir /path``
+    ``--modules-dir=/path``
+    """
+
+    normalized_options = tuple(
+        _require_text(option, "CLI option")
+        for option in options
+    )
+
+    return any(
+        argument == option
+        or argument.startswith(f"{option}=")
+        for argument in arguments
+        for option in normalized_options
+    )
 
 @dataclass(frozen=True, slots=True)
 class CommandPlan:
@@ -612,6 +669,20 @@ class SimulatorRunner(ABC):
                 _normalize_template(raw_template),
                 context,
             )
+
+            modules_dir = context.get("modules_dir")
+            if (
+                self.kind is SimulatorKind.PSYNTHEA
+                and modules_dir is not None
+                and not _contains_cli_option(
+                    dynamic_arguments,
+                    _MODULES_DIR_OPTIONS,
+                )
+            ):
+                dynamic_arguments += ("-d", _require_text(
+                    modules_dir,
+                    "modules_dir",
+                ))
 
 
         inherit_environment = _require_bool(
