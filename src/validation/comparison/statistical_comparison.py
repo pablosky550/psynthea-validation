@@ -599,7 +599,12 @@ def _summary_table(
     ) + _significant_count(prevalence_tests)
 
     significant_after_fdr_count = (
-        int(prevalence_tests["significant_after_fdr"].fillna(False).sum())
+        int(
+            prevalence_tests["significant_after_fdr"]
+            .astype("boolean")
+            .fillna(False)
+            .sum()
+        )
         if not prevalence_tests.empty and "significant_after_fdr" in prevalence_tests.columns
         else 0
     )
@@ -776,7 +781,12 @@ def _ci_upper(ci) -> float | None:
 def _significant_count(frame: pd.DataFrame) -> int:
     if frame.empty or "significant" not in frame.columns:
         return 0
-    return int(frame["significant"].fillna(False).sum())
+    return int(
+        frame["significant"]
+        .astype("boolean")
+        .fillna(False)
+        .sum()
+    )
 
 
 def _series_mean(values) -> float | None:

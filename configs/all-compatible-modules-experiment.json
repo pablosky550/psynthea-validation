@@ -124,12 +124,13 @@
       "environment": {},
       "arguments": {
         "command_arguments": [
-          "--args=-p {population} -s {seed} -m {modules} -r 20241231 -a 18-90 --exporter.baseDirectory={output_dir} --exporter.csv.export=true --exporter.fhir.export=false"
+          "--args=-p {population} -s {seed} -m {modules} -r {reference_date_compact} -a {age_range} --exporter.baseDirectory={output_dir} --exporter.csv.export=true --exporter.fhir.export=false"
         ],
         "discover_outputs": true
       },
       "expected_output_files": [
         "csv/patients.csv",
+        "csv/conditions.csv",
         "csv/encounters.csv"
       ]
     },

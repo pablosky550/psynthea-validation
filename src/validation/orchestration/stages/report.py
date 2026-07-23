@@ -35,7 +35,7 @@ __all__ = [
     "ScientificNarrativeFormatter",
 ]
 
-_REPORT_SCHEMA_VERSION: Final = "6.0.1"
+_REPORT_SCHEMA_VERSION: Final = "6.2.0"
 _REPORT_PRODUCER: Final = "scientific_report_stage"
 _REPORT_JSON_PATH: Final = "report/scientific_report.json"
 _REPORT_HTML_PATH: Final = "report/scientific_report.html"
@@ -124,8 +124,10 @@ class ScientificNarrativeFormatter:
             )
         if self.decision == "PASS" and ready and not self.discrepancies:
             return (
-                "The persisted evidence supports replacement of Synthea by "
-                "Psynthea within the evaluated scope and stated limitations."
+                "No scientifically material discrepancy was detected in this "
+                "configured execution. This result supports continued validation "
+                "but does not, by itself, demonstrate equivalence or justify "
+                "replacement of Synthea by Psynthea."
             )
         return (
             "Scientific equivalence was not demonstrated. Psynthea should not "
@@ -286,8 +288,9 @@ class ScientificNarrativeFormatter:
         if not self.discrepancies:
             return (
                 "Across the evaluated evidence layers, no material discrepancy "
-                "was identified. Interpretation remains restricted to the "
-                "configured modules, cohort and validation criteria."
+                "was detected in this configured execution. Absence of a detected "
+                "difference is not evidence of equivalence; interpretation remains "
+                "restricted to the configured modules, cohort and validation criteria."
             )
         return (
             "Multiple independent evidence layers converge on the same conclusion: "
@@ -526,6 +529,15 @@ def _build_report_payload(
         knowledge=knowledge,
         root_cause=root_cause,
     )
+    configured_modules = _configured_modules(context, validation, knowledge)
+    module_count = len(configured_modules)
+    module_selection = (
+        "single_module"
+        if module_count == 1
+        else "explicit_multi_module"
+        if module_count > 1
+        else "configured_module_set"
+    )
     return {
         "schema_version": _REPORT_SCHEMA_VERSION,
         "report_type": "consolidated_scientific_validation_report",
@@ -539,12 +551,16 @@ def _build_report_payload(
         "cohort": {
             "population_size": context.config.cohort.population,
             "seed": context.config.cohort.seed,
-            "modules": list(_configured_modules(context, validation, knowledge)),
+            "modules": list(configured_modules),
+            "module_count": module_count,
+            "module_selection": module_selection,
             "reference_date": (
                 context.config.cohort.reference_date.isoformat()
                 if context.config.cohort.reference_date is not None
                 else None
             ),
+            "min_age": context.config.cohort.min_age,
+            "max_age": context.config.cohort.max_age,
         },
         "executive_summary": _build_executive_summary(
             decision=decision,
@@ -618,6 +634,12 @@ def _build_scientific_analysis(
             for item in discrepancies
         ],
         "root_cause_status": _mapping(root_section.get("conclusion")).get("status"),
+        "interpretation_policy": {
+            "technical_pass_is_not_equivalence": True,
+            "non_significance_is_not_equivalence": True,
+            "replacement_requires_confirmatory_replication": True,
+            "positive_equivalence_claim_emitted": False,
+        },
     }
 
 
@@ -883,6 +905,42 @@ def _artifact_id(context: OrchestrationContext, suffix: str) -> str:
 
 
 
+def _module_scope_label(cohort: Mapping[str, Any]) -> str:
+    """Return a concise human-readable module scope for the HTML report."""
+    modules = [str(value) for value in _sequence(cohort.get("modules")) if str(value)]
+    count = _integer(cohort.get("module_count")) or len(modules)
+    if count == 1 and modules:
+        return modules[0]
+    if count > 1:
+        return f"{count} explicitly selected modules"
+    return "the configured module set"
+
+
+def _module_selection_details(cohort: Mapping[str, Any]) -> str:
+    """Render the complete module list without dominating the human report."""
+    modules = [str(value) for value in _sequence(cohort.get("modules")) if str(value)]
+    if len(modules) <= 1:
+        return ""
+    return (
+        f'<details><summary>Show complete module selection ({len(modules)})</summary>'
+        + _html_list(modules, "")
+        + '</details>'
+    )
+
+
+def _age_range_label(cohort: Mapping[str, Any]) -> str:
+    """Format the configured inclusive age range."""
+    minimum = cohort.get("min_age")
+    maximum = cohort.get("max_age")
+    if minimum is None and maximum is None:
+        return "Not specified"
+    if minimum is None:
+        return f"≤ {_fmt(maximum)} years"
+    if maximum is None:
+        return f"≥ {_fmt(minimum)} years"
+    return f"{_fmt(minimum)}–{_fmt(maximum)} years"
+
+
 def _render_html(payload: Mapping[str, Any]) -> str:
     summary = _mapping(payload.get("executive_summary"))
     results = _mapping(payload.get("scientific_results"))
@@ -893,8 +951,10 @@ def _render_html(payload: Mapping[str, Any]) -> str:
     decision = str(payload.get("decision") or "INCOMPLETE").upper()
     discrepancies = _scientific_discrepancies(validation, knowledge)
     module_names = [str(value) for value in _sequence(cohort.get("modules"))]
-    module_label = ", ".join(module_names) or "the configured module set"
+    module_label = _module_scope_label(cohort)
+    module_details = _module_selection_details(cohort)
     verdict = _replacement_verdict(decision, knowledge, discrepancies)
+    scientific_verdict = _scientific_verdict_label(decision, discrepancies)
     narrative = ScientificNarrativeFormatter(
         decision=decision,
         module_label=module_label,
@@ -920,16 +980,21 @@ def _render_html(payload: Mapping[str, Any]) -> str:
 <h1>{escape(str(payload.get('experiment_name') or payload.get('experiment_id') or 'Experiment'))}</h1>
 <p class="muted">Publication-oriented equivalence report · schema {_REPORT_SCHEMA_VERSION}</p>
 <div class="verdict-grid">
-<div class="verdict-box"><span class="label">Scientific verdict</span><div class="verdict-value">{escape(decision)}</div><div class="answer">{escape(verdict)}</div><p class="muted">Evaluated scope: {escape(module_label)}</p></div>
+<div class="verdict-box"><span class="label">Scientific verdict</span><div class="verdict-value">{escape(scientific_verdict)}</div><div class="answer">{escape(verdict)}</div><p class="muted">Pipeline decision: {escape(decision)} · Evaluated scope: {escape(module_label)}</p></div>
 <div class="abstract"><span class="label">Structured abstract</span>{narrative.abstract()}</div>
 </div>
 <h3>Evidence profile</h3>{_overall_evidence(summary, validation, knowledge, root)}
+<h3>Experiment overview</h3>
 <div class="summary-grid" style="margin-top:15px">
 {_metric_card('Cohort size', cohort.get('population_size'))}
 {_metric_card('Random seed', cohort.get('seed'))}
+{_metric_card('Reference date', cohort.get('reference_date'))}
+{_metric_card('Age range', _age_range_label(cohort))}
 {_metric_card('Evaluated modules', module_label)}
+{_metric_card('Simulation engines', 'Synthea / Psynthea')}
 {_metric_card('FDR-significant endpoints', _mapping(summary.get('validation')).get('significant_after_fdr_count'))}
 </div>
+{module_details}
 <nav><a href="#methods">Methods</a><a href="#results">Results</a><a href="#discussion">Discussion</a><a href="#actions">Recommendations</a><a href="#appendix">Appendix</a></nav>
 </header>
 <section class="paper-section" id="methods"><h2>1. Methods</h2>{_methods_and_scope(payload, validation, knowledge)}</section>
@@ -962,8 +1027,10 @@ def _scientific_conclusion_v13(
         )
     if decision == "PASS" and not discrepancies and ready_count == len(modules):
         return (
-            "The persisted evidence supports equivalence for all evaluated modules "
-            "within the configured scope and reported limitations."
+            "No scientifically material discrepancy was detected for the evaluated "
+            "modules in this configured execution. Equivalence and replacement are "
+            "not established without replicated runs and prospectively defined "
+            "equivalence margins for the relevant endpoints."
         )
 
     leading = [str(item.get("short_label")) for item in discrepancies[:4] if item.get("short_label")]
@@ -988,11 +1055,13 @@ def _research_overview_v13(
     root_summary = _mapping(summary.get("root_cause"))
     modules = _mapping_sequence(knowledge.get("modules"))
     ready = sum(bool(module.get("research_use_ready")) for module in modules)
-    supported = not discrepancies and ready == len(modules) and bool(modules)
+    no_material_discrepancy_detected = (
+        not discrepancies and ready == len(modules) and bool(modules)
+    )
 
     return f'''<div class="cards">
 {_metric_card("Comparison performed", f"{validation_summary.get('comparable_module_count', 0)} / {validation_summary.get('module_count', 0)}")}
-{_metric_card("Overall equivalence", "Supported" if supported else "Not demonstrated")}
+{_metric_card("Material discrepancy", "Not detected" if no_material_discrepancy_detected else "Detected or unresolved")}
 {_metric_card("Ranked discrepancies", len(discrepancies))}
 {_metric_card("Significant after FDR", validation_summary.get("significant_after_fdr_count"))}
 {_metric_card("Research-ready modules", f"{ready} / {len(modules)}")}
@@ -1236,8 +1305,9 @@ def _render_discrepancies(
 
 def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
     aggregate = _mapping(validation.get("aggregate"))
+    modules = _mapping_sequence(validation.get("modules"))
     rows = []
-    for module in _mapping_sequence(validation.get("modules")):
+    for module in modules:
         stats = _mapping(module.get("statistical_summary"))
         rows.append(
             f'<tr><td>{escape(_fmt(module.get("module_name")))}</td>'
@@ -1245,6 +1315,19 @@ def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequ
             f'<td>{escape(_fmt(stats.get("significant_test_count")))}</td>'
             f'<td>{escape(_fmt(stats.get("significant_after_fdr_count")))}</td>'
             f'<td>{_badge("performed" if stats.get("valid_for_statistical_comparison") else ("not assessable" if str(stats.get("validation_status") or "").casefold() in {"reference_empty", "reference_missing"} else "incomplete"))}</td></tr>'
+        )
+    table = (
+        '<table><thead><tr><th>Module</th><th>Statistical status</th><th>Nominal</th><th>After FDR</th><th>Comparison</th></tr></thead><tbody>'
+        + ''.join(rows)
+        + '</tbody></table>'
+        if rows
+        else '<p class="empty">No module-level statistical summary was available.</p>'
+    )
+    if len(modules) > 1 and rows:
+        table = (
+            f'<details><summary>Module-level statistical summary ({len(modules)} modules)</summary>'
+            + table
+            + '</details>'
         )
     forest = _forest_plot(discrepancies)
     return (
@@ -1254,7 +1337,7 @@ def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequ
         + _metric_card("Significant after FDR", aggregate.get("significant_after_fdr_count"))
         + _metric_card("Warnings", aggregate.get("warning_count"))
         + '</div>'
-        + ('<table><thead><tr><th>Module</th><th>Statistical status</th><th>Nominal</th><th>After FDR</th><th>Comparison</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table>' if rows else '<p class="empty">No module-level statistical summary was available.</p>')
+        + table
         + forest
         + '<div class="callout"><strong>Interpretation.</strong> Statistical significance alone does not establish equivalence. Functional completeness, effect magnitude, clinical concordance and multiplicity-adjusted evidence are considered together.</div>'
     )
@@ -1855,15 +1938,20 @@ def _final_assessment_summary(
     validation_summary = _mapping(summary.get("validation"))
     root_conclusion = _mapping(root.get("conclusion"))
     blocking = sum(bool(item.get("blocking")) for item in discrepancies)
-    equivalent = decision == "PASS" and not discrepancies
-    research_ready = _research_readiness_label(decision, knowledge).startswith("Research ready")
+    no_material_discrepancy_detected = decision == "PASS" and not discrepancies
     values = (
-        ("Equivalent", "Yes" if equivalent else "No"),
-        ("Research ready", "Yes" if research_ready else "No"),
+        (
+            "Material discrepancy detected",
+            "No" if no_material_discrepancy_detected else "Yes or unresolved",
+        ),
+        ("Equivalence demonstrated", "No"),
         ("Blocking discrepancies", blocking),
-        ("FDR-significant tests", validation_summary.get("significant_after_fdr_count", 0)),
+        (
+            "FDR-significant tests",
+            validation_summary.get("significant_after_fdr_count", 0),
+        ),
         ("Root cause", root_conclusion.get("status") or "unknown"),
-        ("Next validation", "Required" if not research_ready else "Not required"),
+        ("Next validation", "Required"),
     )
     return '<div class="final-assessment">' + "".join(
         f'<div class="mini"><span class="label">{escape(label)}</span><strong>{escape(_fmt(value))}</strong></div>'
@@ -1875,7 +1963,7 @@ def _research_readiness_label(decision: str, knowledge: Mapping[str, Any]) -> st
     modules = _mapping_sequence(knowledge.get("modules"))
     ready = bool(modules) and all(bool(module.get("research_use_ready")) for module in modules)
     if decision == "PASS" and ready:
-        return "Research ready within evaluated scope"
+        return "Eligible for confirmatory validation within evaluated scope"
     if decision in {"INCOMPLETE", "NOT_COMPARABLE"}:
         return "Research readiness cannot be assessed"
     return "Not research ready"
@@ -1889,27 +1977,39 @@ def _research_readiness(
 ) -> str:
     knowledge_summary = _mapping(summary.get("knowledge"))
     blocking = [item for item in discrepancies if item.get("blocking")]
-    requirements = (
-        [
+
+    if decision == "NOT_COMPARABLE":
+        requirements = [
             "Restore and verify the minimum reference clinical output required for comparison.",
             "Repeat the identical seeded cohort after restoring reference completeness.",
             "Confirm that affected endpoints are statistically and clinically assessable before interpreting generator differences.",
         ]
-        if decision == "NOT_COMPARABLE"
-        else [
+    elif decision == "PASS" and not discrepancies:
+        requirements = [
+            "Predefine endpoint-specific equivalence margins before confirmatory analysis.",
+            "Replicate the experiment across independent seeds, cohort sizes and reference dates.",
+            "Demonstrate that confidence intervals remain within the approved equivalence margins.",
+            "Obtain independent review before authorising replacement in downstream research.",
+        ]
+    else:
+        requirements = [
             "Resolve or justify all blocking discrepancies.",
             "Repeat the identical seeded cohort after remediation.",
             "Replicate the experiment across independent seeds and cohort sizes.",
             "Confirm that all predefined functional and statistical tolerances are met.",
         ]
-    )
+
     return (
         '<div class="readiness">'
         f'<div class="cards">{_metric_card("Current status", _research_readiness_label(decision, knowledge))}'
         f'{_metric_card("Blocking ranked discrepancies", len(blocking))}'
         f'{_metric_card("Knowledge blocking findings", knowledge_summary.get("blocking_finding_count"))}'
-        f'{_metric_card("Next validation", "Required" if decision != "PASS" else "Not required")}</div>'
-        '<h3>Requirements before research use</h3>' + _html_list(requirements, "No additional requirement was identified.")
+        f'{_metric_card("Next validation", "Required")}</div>'
+        '<h3>Requirements before research use</h3>'
+        + _html_list(
+            requirements,
+            "Confirmatory validation remains required before replacement.",
+        )
         + '</div>'
     )
 
@@ -1946,21 +2046,45 @@ def _contains_internal_identifier(value: str) -> bool:
     ))
 
 
+def _scientific_verdict_label(
+    decision: str,
+    discrepancies: Sequence[Mapping[str, Any]],
+) -> str:
+    """Separate pipeline status from the strength of the scientific conclusion."""
+    if decision == "PASS" and not discrepancies:
+        return "NO MATERIAL DISCREPANCY DETECTED"
+    if decision == "PASS":
+        return "REVIEW REQUIRED"
+    if decision == "REVIEW":
+        return "REVIEW REQUIRED"
+    if decision == "NOT_COMPARABLE":
+        return "NOT COMPARABLE"
+    return "INCOMPLETE"
+
+
 def _replacement_verdict(decision: str, knowledge: Mapping[str, Any], discrepancies: Sequence[Mapping[str, Any]]) -> str:
     ready = bool(_mapping_sequence(knowledge.get("modules"))) and all(bool(x.get("research_use_ready")) for x in _mapping_sequence(knowledge.get("modules")))
-    if decision == "PASS" and ready and not discrepancies: return "Psynthea can replace Synthea within the evaluated scope"
+    if decision == "PASS" and ready and not discrepancies:
+        return (
+            "No blocking discrepancy was detected; equivalence and replacement "
+            "remain to be demonstrated in confirmatory validation"
+        )
     if decision in {"INCOMPLETE", "NOT_COMPARABLE"}: return "Replacement cannot be assessed"
     return "Psynthea cannot yet replace Synthea for the evaluated scope"
 
 
 def _methods_and_scope(payload: Mapping[str, Any], validation: Mapping[str, Any], knowledge: Mapping[str, Any]) -> str:
-    cohort=_mapping(payload.get("cohort")); modules=', '.join(str(x) for x in _sequence(cohort.get("modules"))) or '—'
+    del validation, knowledge
+    cohort = _mapping(payload.get("cohort"))
+    module_scope = _module_scope_label(cohort)
     return (
         '<div class="figure-grid">'
-        f'<div class="method-box"><span class="label">Design</span><p>Deterministic comparison of persisted Synthea and Psynthea cohorts using functional, statistical, clinical-knowledge and root-cause evidence.</p></div>'
-        f'<div class="method-box"><span class="label">Cohort</span><p>Population: <strong>{escape(_fmt(cohort.get("population_size")))}</strong><br>Seed: <strong>{escape(_fmt(cohort.get("seed")))}</strong><br>Modules: <strong>{escape(modules)}</strong></p></div>'
+        '<div class="method-box"><span class="label">Design</span><p>Deterministic comparison of persisted Synthea and Psynthea cohorts using functional, statistical, clinical-knowledge and root-cause evidence.</p></div>'
+        f'<div class="method-box"><span class="label">Cohort</span><p>Population: <strong>{escape(_fmt(cohort.get("population_size")))}</strong><br>Seed: <strong>{escape(_fmt(cohort.get("seed")))}</strong><br>Reference date: <strong>{escape(_fmt(cohort.get("reference_date")))}</strong><br>Age range: <strong>{escape(_age_range_label(cohort))}</strong><br>Modules: <strong>{escape(module_scope)}</strong></p></div>'
         '<div class="method-box"><span class="label">Decision principle</span><p>Equivalence requires complete outputs, acceptable effect magnitude, clinically concordant content and no unresolved blocking evidence.</p></div>'
-        '</div><p class="muted">The report consolidates upstream results and does not recalculate tests, acquire external references or infer new causal mechanisms.</p>'
+        '</div>'
+        + _module_selection_details(cohort)
+        + '<p class="muted">The report consolidates upstream results and does not recalculate tests, acquire external references or infer new causal mechanisms.</p>'
     )
 
 

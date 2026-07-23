@@ -499,3 +499,63 @@ def test_public_lookup_methods_reject_raw_enums() -> None:
         result.stage("validation")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="ArtifactKind"):
         result.artifacts_of_kind("report")  # type: ignore[arg-type]
+
+def test_experiment_config_rejects_asymmetric_expected_output_contracts(tmp_path: Path) -> None:
+    synthea = _simulator(
+        SimulatorKind.SYNTHEA,
+        expected_output_files=(
+            "csv/patients.csv",
+            "csv/encounters.csv",
+        ),
+    )
+    psynthea = _simulator(
+        SimulatorKind.PSYNTHEA,
+        expected_output_files=(
+            "patients.csv",
+            "conditions.csv",
+            "encounters.csv",
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"missing from Synthea: conditions\.csv",
+    ):
+        ExperimentConfig(
+            id="asymmetric-output-contract",
+            name="Asymmetric output contract",
+            cohort=_cohort(),
+            simulators=(synthea, psynthea),
+            output_root=tmp_path / "runs",
+        )
+
+
+def test_experiment_config_accepts_equivalent_output_contracts_with_different_paths(
+    tmp_path: Path,
+) -> None:
+    synthea = _simulator(
+        SimulatorKind.SYNTHEA,
+        expected_output_files=(
+            "csv/patients.csv",
+            "csv/conditions.csv",
+            "csv/encounters.csv",
+        ),
+    )
+    psynthea = _simulator(
+        SimulatorKind.PSYNTHEA,
+        expected_output_files=(
+            "patients.csv",
+            "conditions.csv",
+            "encounters.csv",
+        ),
+    )
+
+    config = ExperimentConfig(
+        id="symmetric-output-contract",
+        name="Symmetric output contract",
+        cohort=_cohort(),
+        simulators=(synthea, psynthea),
+        output_root=tmp_path / "runs",
+    )
+
+    assert config.simulators == (synthea, psynthea)

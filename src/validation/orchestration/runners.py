@@ -95,8 +95,10 @@ _ALLOWED_PLACEHOLDERS: Final = frozenset(
         "module_files",
         "output_dir",
         "reference_date",
+        "reference_date_compact",
         "min_age",
         "max_age",
+        "age_range",
         "step_days",
         "years_of_history",
         "output_format",
@@ -315,6 +317,11 @@ def _cohort_context(
                 if cohort.reference_date is not None
                 else None
             ),
+            "reference_date_compact": (
+                cohort.reference_date.strftime("%Y%m%d")
+                if cohort.reference_date is not None
+                else None
+            ),
             "min_age": (
                 str(cohort.min_age)
                 if cohort.min_age is not None
@@ -323,6 +330,11 @@ def _cohort_context(
             "max_age": (
                 str(cohort.max_age)
                 if cohort.max_age is not None
+                else None
+            ),
+            "age_range": (
+                f"{cohort.min_age}-{cohort.max_age}"
+                if cohort.min_age is not None and cohort.max_age is not None
                 else None
             ),
             "step_days": (

@@ -201,6 +201,27 @@ def _normalize_relative_path(value: Path | str, field_name: str) -> Path:
     return path
 
 
+def _normalize_existing_directory(
+    value: Path | str,
+    field_name: str,
+) -> Path:
+    """Return a canonical existing directory path.
+
+    Directory-valued scientific inputs are validated at model construction so
+    invalid configurations fail before module discovery or simulator execution.
+    ``resolve(strict=False)`` canonicalizes relative segments and symlinks while
+    preserving stable, field-specific validation errors for missing paths and
+    regular files.
+    """
+
+    path = _normalize_path(value, field_name).resolve(strict=False)
+    if not path.exists():
+        raise ValueError(f"{field_name} does not exist: {path}.")
+    if not path.is_dir():
+        raise ValueError(f"{field_name} must be a directory: {path}.")
+    return path
+
+
 def _normalize_datetime(value: datetime | None, field_name: str) -> datetime | None:
     if value is None:
         return None
@@ -524,7 +545,10 @@ class CohortConfig:
         modules_dir = (
             None
             if self.modules_dir is None
-            else _normalize_path(self.modules_dir, "modules_dir")
+            else _normalize_existing_directory(
+                self.modules_dir,
+                "modules_dir",
+            )
         )
 
         if selection is ModuleSelectionMode.EXPLICIT:
@@ -707,6 +731,33 @@ class ExperimentConfig:
             raise ValueError("simulators must contain exactly one Synthea and one psynthea config.")
         if len(simulator_kinds) != len(set(simulator_kinds)):
             raise ValueError("simulators must not contain duplicate simulator kinds.")
+
+        output_contracts = {
+            simulator.kind: frozenset(
+                Path(output_file).name.casefold()
+                for output_file in simulator.expected_output_files
+            )
+            for simulator in simulators
+        }
+        synthea_outputs = output_contracts[SimulatorKind.SYNTHEA]
+        psynthea_outputs = output_contracts[SimulatorKind.PSYNTHEA]
+        if synthea_outputs and psynthea_outputs and synthea_outputs != psynthea_outputs:
+            missing_from_synthea = sorted(psynthea_outputs - synthea_outputs)
+            missing_from_psynthea = sorted(synthea_outputs - psynthea_outputs)
+            differences: list[str] = []
+            if missing_from_synthea:
+                differences.append(
+                    "missing from Synthea: " + ", ".join(missing_from_synthea)
+                )
+            if missing_from_psynthea:
+                differences.append(
+                    "missing from psynthea: " + ", ".join(missing_from_psynthea)
+                )
+            raise ValueError(
+                "simulators must declare equivalent expected_output_files contracts "
+                "by output filename (" + "; ".join(differences) + ")."
+            )
+
         object.__setattr__(self, "simulators", simulators)
 
         object.__setattr__(self, "output_root", _normalize_path(self.output_root, "output_root"))

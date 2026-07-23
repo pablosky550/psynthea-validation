@@ -224,6 +224,7 @@ def test_stage_executes_engine_and_persists_canonical_outputs(
         (),
         {
             "id": "root-cause.report",
+            "generated_at": _FIXED_TIME,
             "status": type("Status", (), {"value": "not_applicable"})(),
             "confidence": type("Confidence", (), {"value": "none"})(),
             "findings": (),

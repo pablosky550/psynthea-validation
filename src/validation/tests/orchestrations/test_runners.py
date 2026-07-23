@@ -283,7 +283,9 @@ def test_custom_template_renders_all_supported_cohort_fields(tmp_path: Path) -> 
             "--seed={seed}",
             "--modules={modules}",
             "--date={reference_date}",
+            "--compact-date={reference_date_compact}",
             "--ages={min_age}-{max_age}",
+            "--age-range={age_range}",
             "--out={output_dir}",
         ),
         "module_separator": ";",
@@ -297,7 +299,9 @@ def test_custom_template_renders_all_supported_cohort_fields(tmp_path: Path) -> 
 
     assert "--modules=hypertension;diabetes" in plan.command
     assert "--date=2026-01-01" in plan.command
+    assert "--compact-date=20260101" in plan.command
     assert "--ages=18-90" in plan.command
+    assert "--age-range=18-90" in plan.command
     assert any(item.startswith("--out=") for item in plan.command)
 
 

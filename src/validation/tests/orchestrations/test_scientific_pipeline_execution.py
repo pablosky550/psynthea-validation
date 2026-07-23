@@ -108,6 +108,7 @@ def test_orchestrator_executes_knowledge_store_root_cause_chain(
         (),
         {
             "id": "root-cause.report",
+            "generated_at": _FIXED_TIME,
             "status": type("Status", (), {"value": "not_applicable"})(),
             "confidence": type("Confidence", (), {"value": "none"})(),
             "findings": (),

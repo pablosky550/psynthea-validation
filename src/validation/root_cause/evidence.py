@@ -1518,7 +1518,9 @@ def _canonical_value(value: Any) -> Any:
         return value
     if isinstance(value, float):
         if not isfinite(value):
-            raise ValueError("Canonical values must not contain NaN or infinity.")
+            raise ValueError(
+                "Canonical values must not contain NaN or infinity."
+            )
         return value
     if isinstance(value, Enum):
         return _canonical_value(value.value)
@@ -1529,25 +1531,26 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, PurePath):
         return value.as_posix()
     if is_dataclass(value) and not isinstance(value, type):
-        return {item.name: _canonical_value(getattr(value, item.name)) for item in fields(value)}
+        return {
+            item.name: _canonical_value(getattr(value, item.name))
+            for item in fields(value)
+        }
     if isinstance(value, Mapping):
-        for candidate_id, result in self.attribution_results.items():
-            metadata_candidate_id = result.metadata.get("candidate_id")
-        if (
-            metadata_candidate_id is not None
-            and metadata_candidate_id != candidate_id
-        ):
-            raise ValueError(
-                "attribution_results keys must match "
-                "AttributionResult.metadata['candidate_id'] when present."
-            )
-        return {key: _canonical_value(value[key]) for key in sorted(value)}
+        return {
+            str(key): _canonical_value(value[key])
+            for key in sorted(value, key=lambda item: str(item))
+        }
     if isinstance(value, (set, frozenset)):
         items = [_canonical_value(item) for item in value]
         return sorted(items, key=_canonical_sort_key)
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        (str, bytes, bytearray),
+    ):
         return [_canonical_value(item) for item in value]
-    raise TypeError(f"Unsupported canonical value type: {type(value).__name__}.")
+    raise TypeError(
+        f"Unsupported canonical value type: {type(value).__name__}."
+    )
 
 
 def _canonical_sort_key(value: Any) -> str:
@@ -1561,6 +1564,7 @@ def _canonical_sort_key(value: Any) -> str:
 
 
 def _fingerprint(value: Any) -> str:
+    """Return a deterministic SHA-256 fingerprint for canonical evidence data."""
     serialized = dumps(
         _canonical_value(value),
         ensure_ascii=False,
