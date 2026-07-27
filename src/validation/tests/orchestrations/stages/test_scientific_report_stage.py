@@ -125,3 +125,92 @@ def test_statistical_module_table_is_collapsed_for_multimodule_runs() -> None:
 
     assert "Module-level statistical summary (2 modules)" in html
     assert html.count("<details>") == 1
+
+from __future__ import annotations
+
+from validation.orchestration.stages.report import (
+    _observation_window_label,
+    _render_demographic_comparability,
+    _render_temporal_epidemiology,
+)
+
+
+def test_observation_window_label_is_explicit() -> None:
+    assert _observation_window_label({
+        "observation_start_date": "2020-01-01",
+        "observation_end_date": "2024-12-31",
+    }) == "2020-01-01 – 2024-12-31"
+
+
+def test_demographic_section_renders_age_and_sex_with_differences() -> None:
+    validation = {
+        "demographics": {
+            "age_summary": {
+                "synthea": {"mean": 55.0, "median": 56.0},
+                "psynthea": {"mean": 57.0, "median": 58.0},
+            },
+            "age_groups": [
+                {
+                    "label": "50–59",
+                    "synthea_count": 30,
+                    "psynthea_count": 35,
+                    "synthea_proportion": 0.30,
+                    "psynthea_proportion": 0.35,
+                }
+            ],
+            "sex_distribution": [
+                {
+                    "sex": "F",
+                    "synthea_count": 52,
+                    "psynthea_count": 49,
+                    "synthea_proportion": 0.52,
+                    "psynthea_proportion": 0.49,
+                }
+            ],
+        }
+    }
+    html = _render_demographic_comparability(validation)
+    assert "Age summary" in html
+    assert "Age-group distribution" in html
+    assert "Sex distribution" in html
+    assert "+5.0 pp" in html
+    assert "baseline comparability checks" in html
+
+
+def test_epidemiology_section_renders_denominators_and_collapsed_detail() -> None:
+    validation = {
+        "epidemiology": {
+            "aggregate": {
+                "synthea": {"eligible_patients": 100, "prevalent_patients": 29, "incident_patients": 10},
+                "psynthea": {"eligible_patients": 100, "prevalent_patients": 38, "incident_patients": 14},
+            },
+            "diseases": [
+                {
+                    "code": "38341003",
+                    "description": "Hypertension",
+                    "synthea_period_prevalence": 0.29,
+                    "psynthea_period_prevalence": 0.38,
+                    "synthea_cumulative_incidence": 0.12,
+                    "psynthea_cumulative_incidence": 0.18,
+                    "synthea_at_risk_patients": 83,
+                    "psynthea_at_risk_patients": 79,
+                }
+            ],
+        }
+    }
+    cohort = {
+        "observation_start_date": "2020-01-01",
+        "observation_end_date": "2024-12-31",
+    }
+    html = _render_temporal_epidemiology(validation, cohort)
+    assert "2020-01-01" in html
+    assert "Disease-specific epidemiology" in html
+    assert "Hypertension" in html
+    assert "denominators and onset age" in html
+    assert "population at risk" in html
+
+
+def test_missing_demographics_is_reported_without_fabrication() -> None:
+    html = _render_demographic_comparability({})
+    assert "was not persisted" in html
+    assert "cannot be assessed" in html

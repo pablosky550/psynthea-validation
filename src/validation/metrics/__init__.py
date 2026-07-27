@@ -22,14 +22,20 @@ to :mod:`validation.comparison`.
 from __future__ import annotations
 
 from .clinical import (
+    ClinicalEpidemiologyMetrics,
     ClinicalMetrics,
+    DiseaseEpidemiologyMetrics,
     DiseaseMetrics,
     calculate_clinical,
+    calculate_clinical_epidemiology,
 )
 from .cohorts import (
     CohortCompletenessMetrics,
     CohortProfileMetrics,
     CohortTableCounts,
+    ObservationWindow,
+    TemporalConditionCohorts,
+    build_temporal_condition_cohorts,
     calculate_cohort_profile,
 )
 from .demographics import (
@@ -72,8 +78,11 @@ __all__ = [
 
     # Clinical conditions.
     "DiseaseMetrics",
+    "DiseaseEpidemiologyMetrics",
     "ClinicalMetrics",
+    "ClinicalEpidemiologyMetrics",
     "calculate_clinical",
+    "calculate_clinical_epidemiology",
 
     # Medications.
     "MedicationMetrics",
@@ -96,6 +105,9 @@ __all__ = [
     "calculate_quality",
 
     # Cohort-level profiling.
+    "ObservationWindow",
+    "TemporalConditionCohorts",
+    "build_temporal_condition_cohorts",
     "CohortTableCounts",
     "CohortCompletenessMetrics",
     "CohortProfileMetrics",

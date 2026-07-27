@@ -7,6 +7,8 @@ no statistical recalculation, evidence acquisition or causal inference.
 
 from __future__ import annotations
 
+import math
+
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,7 +37,7 @@ __all__ = [
     "ScientificNarrativeFormatter",
 ]
 
-_REPORT_SCHEMA_VERSION: Final = "6.2.0"
+_REPORT_SCHEMA_VERSION: Final = "7.0.0"
 _REPORT_PRODUCER: Final = "scientific_report_stage"
 _REPORT_JSON_PATH: Final = "report/scientific_report.json"
 _REPORT_HTML_PATH: Final = "report/scientific_report.html"
@@ -87,8 +89,8 @@ class ScientificNarrativeFormatter:
         conclusion = self.conclusion()
         return (
             f"<p><strong>Objective.</strong> {escape(objective)}</p>"
-            f"<p><strong>Methods.</strong> {escape(methods)}</p>"
-            f"<p><strong>Results.</strong> {escape(results)}</p>"
+            f"<p><strong>Métodos.</strong> {escape(methods)}</p>"
+            f"<p><strong>Resultados.</strong> {escape(results)}</p>"
             f"<p><strong>Conclusion.</strong> {escape(conclusion)}</p>"
         )
 
@@ -263,7 +265,7 @@ class ScientificNarrativeFormatter:
             )
         if "prevalence" in title:
             return (
-                "Disease-burden estimates, cohort definitions and epidemiological "
+                "Enfermedad-burden estimates, cohort definitions and epidemiological "
                 "comparisons may be biased or non-comparable."
             )
         return (
@@ -272,7 +274,7 @@ class ScientificNarrativeFormatter:
         )
 
     def overall_interpretation(self) -> str:
-        """Return the main Discussion interpretation."""
+        """Return the main Discusión interpretation."""
         if self.decision == "NOT_COMPARABLE":
             return (
                 "The reference generator did not provide the minimum persisted "
@@ -561,7 +563,25 @@ def _build_report_payload(
             ),
             "min_age": context.config.cohort.min_age,
             "max_age": context.config.cohort.max_age,
+            "años_of_history": getattr(context.config.cohort, "años_of_history", None),
+            "observation_start_date": (
+                context.config.cohort.observation_start_date.isoformat()
+                if getattr(context.config.cohort, "observation_start_date", None) is not None
+                else None
+            ),
+            "observation_end_date": (
+                context.config.cohort.observation_end_date.isoformat()
+                if getattr(context.config.cohort, "observation_end_date", None) is not None
+                else None
+            ),
+            "wellness_encounters": getattr(context.config.cohort, "wellness_encounters", False),
+            "vitals": getattr(context.config.cohort, "vitals", False),
+            "mortality": getattr(context.config.cohort, "mortality", False),
+            "keystone": getattr(context.config.cohort, "keystone", False),
+            "output_format": getattr(context.config.cohort, "output_format", None),
+            "parameters": _plain_value(context.config.cohort.parameters),
         },
+        "execution_provenance": _execution_provenance(context),
         "executive_summary": _build_executive_summary(
             decision=decision,
             validation=validation,
@@ -592,6 +612,33 @@ def _build_report_payload(
     }
 
 
+
+
+def _execution_provenance(context: OrchestrationContext) -> dict[str, Any]:
+    """Return reproducibility metadata without claiming unpersisted execution details."""
+    configured: list[dict[str, Any]] = []
+    for simulator in context.config.simulators:
+        configured.append({
+            "kind": simulator.kind.value,
+            "command": list(simulator.command),
+            "working_directory": str(simulator.working_directory),
+            "arguments": _plain_value(simulator.arguments),
+            "environment_keys": sorted(simulator.environment),
+            "timeout_seconds": simulator.timeout_seconds,
+        })
+
+    observed: list[dict[str, Any]] = []
+    for result in context.stage_results:
+        metadata = _plain_value(result.metadata)
+        for key in ("command", "commands", "executed_command", "simulator_commands"):
+            value = _mapping(metadata).get(key)
+            if value:
+                observed.append({"stage": result.stage.value, "field": key, "value": value})
+    return {
+        "configured_simulators": configured,
+        "persisted_execution_commands": observed,
+        "command_status": "exact" if observed else "configured_contract_only",
+    }
 
 def _build_scientific_analysis(
     *,
@@ -933,13 +980,464 @@ def _age_range_label(cohort: Mapping[str, Any]) -> str:
     minimum = cohort.get("min_age")
     maximum = cohort.get("max_age")
     if minimum is None and maximum is None:
-        return "Not specified"
+        return "No especificado"
     if minimum is None:
-        return f"≤ {_fmt(maximum)} years"
+        return f"≤ {_fmt(maximum)} años"
     if maximum is None:
-        return f"≥ {_fmt(minimum)} years"
-    return f"{_fmt(minimum)}–{_fmt(maximum)} years"
+        return f"≥ {_fmt(minimum)} años"
+    return f"{_fmt(minimum)}–{_fmt(maximum)} años"
 
+
+
+def _first_mapping(*values: Any) -> Mapping[str, Any]:
+    for value in values:
+        mapped = _mapping(value)
+        if mapped:
+            return mapped
+    return {}
+
+
+def _validation_source(validation: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return the canonical validation-stage payload embedded by report.py.
+
+    The report payload exposes a curated validation view and preserves the
+    original validation_result.json below ``source``. Cohort-level comparisons
+    are currently part of that original payload, so research sections must
+    inspect both levels without treating an empty curated view as evidence that
+    the metrics were not generated.
+    """
+    return _first_mapping(validation.get("source"))
+
+
+def _comparison_payload(validation: Mapping[str, Any]) -> Mapping[str, Any]:
+    source = _validation_source(validation)
+    return _first_mapping(
+        validation.get("comparison"),
+        validation.get("java_vs_psynthea"),
+        validation.get("cohort_comparison"),
+        source.get("comparison"),
+        source.get("java_vs_psynthea"),
+        source.get("cohort_comparison"),
+    )
+
+
+def _demographic_payload(validation: Mapping[str, Any]) -> Mapping[str, Any]:
+    source = _validation_source(validation)
+    comparison = _comparison_payload(validation)
+    return _first_mapping(
+        validation.get("demographics"),
+        source.get("demographics"),
+        comparison.get("demographics"),
+        comparison.get("demographic_comparison"),
+    )
+
+
+def _epidemiology_payload(validation: Mapping[str, Any]) -> Mapping[str, Any]:
+    source = _validation_source(validation)
+    comparison = _comparison_payload(validation)
+    return _first_mapping(
+        validation.get("epidemiology"),
+        source.get("epidemiology"),
+        comparison.get("epidemiology"),
+        comparison.get("clinical_epidemiology"),
+    )
+
+
+def _rows(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Mapping):
+        if isinstance(value.get("rows"), Sequence) and not isinstance(value.get("rows"), (str, bytes)):
+            return _mapping_sequence(value.get("rows"))
+        output: list[Mapping[str, Any]] = []
+        for key, item in value.items():
+            mapped = _mapping(item)
+            if mapped:
+                output.append({"category": key, **mapped})
+        return output
+    return _mapping_sequence(value)
+
+
+def _value_for_engine(row: Mapping[str, Any], engine: str, metric: str | None = None) -> Any:
+    aliases = (engine, "java" if engine == "synthea" else "python")
+    metric_aliases = {
+        "proportion": ("proportion", "fraction", "rate"),
+        "count": ("count", "n", "patients"),
+    }
+    if metric:
+        for alias in aliases:
+            for candidate_metric in metric_aliases.get(metric, (metric,)):
+                for key in (
+                    f"{candidate_metric}_{alias}",
+                    f"{alias}_{candidate_metric}",
+                ):
+                    if key in row:
+                        return row.get(key)
+    for alias in aliases:
+        if alias in row:
+            value = row.get(alias)
+            if metric and isinstance(value, Mapping):
+                for candidate_metric in metric_aliases.get(metric, (metric,)):
+                    if candidate_metric in value:
+                        return value.get(candidate_metric)
+            return value
+    return None
+
+
+def _age_statistic_values(
+    age_summary: Mapping[str, Any],
+    metric_key: str,
+) -> tuple[Any, Any]:
+    """Read both canonical and legacy age-summary layouts."""
+    aliases = {
+        "mean_age": ("mean_age", "mean"),
+        "median_age": ("median_age", "median", "p50_age"),
+        "std_age": ("std_age", "standard_deviation", "sd_age"),
+        "p25_age": ("p25_age", "q1", "p25"),
+        "p75_age": ("p75_age", "q3", "p75"),
+        "min_age": ("min_age", "min"),
+        "max_age": ("max_age", "max"),
+    }
+    for key in aliases.get(metric_key, (metric_key,)):
+        value = age_summary.get(key)
+        if isinstance(value, Mapping):
+            return (
+                _value_for_engine(value, "synthea"),
+                _value_for_engine(value, "psynthea"),
+            )
+    return (
+        _value_for_engine(age_summary, "synthea", metric_key),
+        _value_for_engine(age_summary, "psynthea", metric_key),
+    )
+
+
+def _percent_points(reference: Any, candidate: Any) -> str:
+    try:
+        return f"{(float(candidate) - float(reference)) * 100:+.1f} pp"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
+def _scientific_note(text: str) -> str:
+    return f'<div class="callout scientific-note"><strong>Scientific interpretation.</strong> {escape(text)}</div>'
+
+
+def _cohort_age_limits(cohort: Mapping[str, Any]) -> tuple[int | None, int | None]:
+    def _as_int(value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    return _as_int(cohort.get("min_age")), _as_int(cohort.get("max_age"))
+
+
+def _adapt_age_band_label(
+    raw_label: Any,
+    *,
+    min_age: int | None,
+    max_age: int | None,
+) -> str:
+    label = str(raw_label or "No especificado").strip()
+    normalized = label.replace("–", "-").replace("—", "-")
+    if normalized.endswith("+"):
+        try:
+            lower = int(normalized[:-1])
+        except ValueError:
+            return label
+        effective_lower = max(lower, min_age) if min_age is not None else lower
+        if max_age is not None:
+            return f"{effective_lower}–{max_age}"
+        return f"{effective_lower}+"
+    if "-" not in normalized:
+        return label
+    lower_text, upper_text = normalized.split("-", 1)
+    try:
+        lower, upper = int(lower_text), int(upper_text)
+    except ValueError:
+        return label
+    effective_lower = max(lower, min_age) if min_age is not None else lower
+    effective_upper = min(upper, max_age) if max_age is not None else upper
+    if effective_lower > effective_upper:
+        return ""
+    return f"{effective_lower}–{effective_upper}"
+
+
+def _demographic_interpretation(
+    age_summary: Mapping[str, Any],
+    sex_rows: Sequence[Mapping[str, Any]],
+) -> str:
+    s_mean, p_mean = _age_statistic_values(age_summary, "mean_age")
+    mean_delta: float | None = None
+    try:
+        mean_delta = float(p_mean) - float(s_mean)
+    except (TypeError, ValueError):
+        pass
+
+    maximum_sex_delta: float | None = None
+    for row in sex_rows:
+        s_fraction = _value_for_engine(row, "synthea", "proportion")
+        p_fraction = _value_for_engine(row, "psynthea", "proportion")
+        try:
+            delta = abs((float(p_fraction) - float(s_fraction)) * 100)
+        except (TypeError, ValueError):
+            continue
+        maximum_sex_delta = delta if maximum_sex_delta is None else max(maximum_sex_delta, delta)
+
+    evidence: list[str] = []
+    if mean_delta is not None:
+        evidence.append(f"la edad media difirió en {abs(mean_delta):.1f} años")
+    if maximum_sex_delta is not None:
+        evidence.append(f"la mayor diferencia entre categorías de sexo fue de {maximum_sex_delta:.1f} puntos porcentuales")
+
+    if not evidence:
+        return (
+            "Age and sex are baseline comparability checks. Clinical differences remain descriptive "
+            "until demographic balance and other design factors are assessed prospectively."
+        )
+
+    thresholds_exceeded = (
+        (mean_delta is not None and abs(mean_delta) >= 5.0)
+        or (maximum_sex_delta is not None and maximum_sex_delta >= 10.0)
+    )
+    if thresholds_exceeded:
+        conclusion = (
+            "The observed baseline imbalance is potentially material and should be considered when "
+            "interpreting downstream clinical-rate differences. Stratified or adjusted analyses are recommended."
+        )
+    else:
+        conclusion = (
+            "No large baseline imbalance is apparent from these baseline comparability checks; however, a single run "
+            "does not establish demographic equivalence. Confirm balance across seeds and with prespecified tests."
+        )
+    return f"En esta ejecución, {' and '.join(evidence)}. {conclusion}"
+
+
+def _render_demographic_comparability(
+    validation: Mapping[str, Any],
+    cohort: Mapping[str, Any] | None = None,
+) -> str:
+    demographics = _demographic_payload(validation)
+    if not demographics:
+        return (
+            '<p class="empty">Demographic comparison was not persisted in the validation artifact. '
+            'Age and sex comparability cannot be assessed from this report.</p>'
+            + _scientific_note(
+                "Las diferencias en tasas clínicas no deben interpretarse como efectos del generador hasta disponer de las distribuciones basales de edad y sexo."
+            )
+        )
+
+    cohort = cohort or {}
+    min_age, max_age = _cohort_age_limits(cohort)
+    age_summary = _first_mapping(demographics.get("age_summary"), demographics.get("age"))
+    age_groups = _rows(demographics.get("age_groups") or demographics.get("age_distribution"))
+    sex_rows = _rows(demographics.get("sex_distribution") or demographics.get("sex"))
+
+    sections: list[str] = []
+    summary_metrics = (
+        ("mean_age", "Media"),
+        ("median_age", "Mediana"),
+        ("std_age", "Desviación estándar"),
+        ("p25_age", "Percentil 25"),
+        ("p75_age", "Percentil 75"),
+        ("min_age", "Mínimo"),
+        ("max_age", "Máximo"),
+    )
+    if age_summary:
+        rows: list[str] = []
+        for metric_key, label in summary_metrics:
+            s_value, p_value = _age_statistic_values(age_summary, metric_key)
+            if s_value is None and p_value is None:
+                continue
+            delta = "N/A"
+            try:
+                delta = f"{float(p_value) - float(s_value):+.2f} años"
+            except (TypeError, ValueError):
+                pass
+            rows.append(
+                f'<tr><td>{escape(label)}</td><td>{escape(_format_decimal(s_value, 2))}</td>'
+                f'<td>{escape(_format_decimal(p_value, 2))}</td><td>{escape(delta)}</td></tr>'
+            )
+        if rows:
+            sections.append(
+                '<h3>Resumen de edad</h3><table><thead><tr><th>Estadístico</th><th>Synthea</th>'
+                '<th>Psynthea</th><th>Diferencia absoluta</th></tr></thead><tbody>'
+                + ''.join(rows) + '</tbody></table>'
+            )
+
+    rendered_age_rows: list[str] = []
+    for row in age_groups:
+        s_n = _value_for_engine(row, "synthea", "count")
+        p_n = _value_for_engine(row, "psynthea", "count")
+        s_pct = _value_for_engine(row, "synthea", "proportion")
+        p_pct = _value_for_engine(row, "psynthea", "proportion")
+        try:
+            total = int(s_n or 0) + int(p_n or 0)
+        except (TypeError, ValueError):
+            total = 1
+        raw_label = row.get("label") or row.get("group") or row.get("category") or row.get("age_group") or row.get("age_band")
+        label = _adapt_age_band_label(raw_label, min_age=min_age, max_age=max_age)
+        if not label or total == 0:
+            continue
+        rendered_age_rows.append(
+            f'<tr><td>{escape(label)}</td>'
+            f'<td>{escape(_format_integer(s_n))} ({escape(_format_percent(s_pct))})</td>'
+            f'<td>{escape(_format_integer(p_n))} ({escape(_format_percent(p_pct))})</td>'
+            f'<td>{escape(_percent_points(s_pct, p_pct))}</td></tr>'
+        )
+    if rendered_age_rows:
+        sections.append(
+            '<h3>Distribución por grupos de edad</h3><table><thead><tr><th>Grupo de edad</th>'
+            '<th>Synthea n (%)</th><th>Psynthea n (%)</th><th>Diferencia</th></tr></thead><tbody>'
+            + ''.join(rendered_age_rows) + '</tbody></table>'
+        )
+
+    if sex_rows:
+        rows = []
+        for row in sex_rows:
+            label = row.get("label") or row.get("sex") or row.get("category") or "No especificado"
+            label = {"Male": "Hombre", "Female": "Mujer", "Unknown": "Desconocido"}.get(str(label), str(label))
+            s_n = _value_for_engine(row, "synthea", "count")
+            p_n = _value_for_engine(row, "psynthea", "count")
+            s_pct = _value_for_engine(row, "synthea", "proportion")
+            p_pct = _value_for_engine(row, "psynthea", "proportion")
+            rows.append(
+                f'<tr><td>{escape(str(label))}</td>'
+                f'<td>{escape(_format_integer(s_n))} ({escape(_format_percent(s_pct))})</td>'
+                f'<td>{escape(_format_integer(p_n))} ({escape(_format_percent(p_pct))})</td>'
+                f'<td>{escape(_percent_points(s_pct, p_pct))}</td></tr>'
+            )
+        sections.append(
+            '<h3>Distribución por sexo</h3><table><thead><tr><th>Categoría de sexo</th>'
+            '<th>Synthea n (%)</th><th>Psynthea n (%)</th><th>Diferencia</th></tr></thead><tbody>'
+            + ''.join(rows) + '</tbody></table>'
+        )
+
+    if not sections:
+        sections.append('<p class="empty">El artefacto demográfico no contenía tablas de edad o sexo representables.</p>')
+    sections.append(_scientific_note(_demographic_interpretation(age_summary, sex_rows)))
+    return ''.join(sections)
+
+
+def _format_decimal(value: Any, digits: int = 2) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+    if not math.isfinite(number):
+        return "N/A"
+    return f"{number:.{digits}f}"
+
+
+def _format_integer(value: Any) -> str:
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return "N/A"
+
+def _render_temporal_epidemiology(validation: Mapping[str, Any], cohort: Mapping[str, Any]) -> str:
+    epidemiology = _epidemiology_payload(validation)
+    start = cohort.get("observation_start_date") or epidemiology.get("observation_start")
+    end = cohort.get("observation_end_date") or epidemiology.get("observation_end")
+    window = (
+        f'<div class="window-banner"><span><strong>Inicio</strong><br>{escape(_fmt(start))}</span>'
+        f'<span><strong>Fin</strong><br>{escape(_fmt(end))}</span>'
+        '<span><strong>Convención de límites</strong><br>Inclusivos</span></div>'
+    )
+    if not epidemiology:
+        return window + (
+            '<p class="empty">Observation-window epidemiology was not persisted in the validation artifact. '
+            'Period prevalence and cumulative incidence are therefore not reported.</p>'
+        )
+
+    aggregate = _first_mapping(epidemiology.get("aggregate"), epidemiology.get("summary"), epidemiology)
+    metrics = ("eligible_patients", "prevalent_patients", "incident_patients")
+    rows: list[str] = []
+    for metric in metrics:
+        s_value = _value_for_engine(aggregate, "synthea", metric)
+        p_value = _value_for_engine(aggregate, "psynthea", metric)
+        if s_value is None and p_value is None:
+            continue
+        delta, _ = _relative_difference_display(s_value, p_value)
+        rows.append(
+            f'<tr><td>{escape(_humanize(metric))}</td><td>{escape(_fmt(s_value))}</td>'
+            f'<td>{escape(_fmt(p_value))}</td><td>{escape(delta)}</td></tr>'
+        )
+    output = [window]
+    if rows:
+        output.append(
+            '<table><thead><tr><th>Métrica poblacional</th><th>Synthea</th><th>Psynthea</th>'
+            '<th>Diferencia relativa</th></tr></thead><tbody>' + ''.join(rows) + '</tbody></table>'
+        )
+
+    diseases = _rows(epidemiology.get("diseases") or epidemiology.get("disease_epidemiology"))
+    if diseases:
+        summary_rows: list[str] = []
+        detail_blocks: list[str] = []
+        for disease in diseases:
+            code = disease.get("code") or disease.get("CODE") or "No especificado"
+            label = disease.get("description") or disease.get("label") or code
+            s_prev = _value_for_engine(disease, "synthea", "period_prevalence")
+            p_prev = _value_for_engine(disease, "psynthea", "period_prevalence")
+            s_inc = _value_for_engine(disease, "synthea", "cumulative_incidence")
+            p_inc = _value_for_engine(disease, "psynthea", "cumulative_incidence")
+            summary_rows.append(
+                f'<tr><td><code>{escape(str(code))}</code></td><td>{escape(str(label))}</td>'
+                f'<td>{escape(_format_percent(s_prev))}</td><td>{escape(_format_percent(p_prev))}</td>'
+                f'<td>{escape(_percent_points(s_prev, p_prev))}</td>'
+                f'<td>{escape(_format_percent(s_inc))}</td><td>{escape(_format_percent(p_inc))}</td>'
+                f'<td>{escape(_percent_points(s_inc, p_inc))}</td></tr>'
+            )
+            detail_rows = []
+            for metric in ("eligible_patients", "at_risk_patients", "prevalent_patients", "incident_patients", "mean_incident_onset_age", "median_incident_onset_age", "min_incident_onset_age", "max_incident_onset_age"):
+                s_value = _value_for_engine(disease, "synthea", metric)
+                p_value = _value_for_engine(disease, "psynthea", metric)
+                if s_value is None and p_value is None:
+                    continue
+                detail_rows.append(
+                    f'<tr><td>{escape(_humanize(metric))}</td><td>{escape(_fmt(s_value))}</td><td>{escape(_fmt(p_value))}</td></tr>'
+                )
+            if detail_rows:
+                detail_blocks.append(
+                    f'<details><summary>{escape(str(label))} ({escape(str(code))}): denominadores y edad de inicio</summary>'
+                    '<table><thead><tr><th>Métrica</th><th>Synthea</th><th>Psynthea</th></tr></thead><tbody>'
+                    + ''.join(detail_rows) + '</tbody></table></details>'
+                )
+        output.append(
+            '<h3>Epidemiología específica por enfermedad</h3><div class="table-scroll"><table><thead><tr>'
+            '<th>Código</th><th>Enfermedad</th><th>Prev. Synthea</th><th>Prev. Psynthea</th><th>Δ prevalencia</th>'
+            '<th>Inc. Synthea</th><th>Inc. Psynthea</th><th>Δ incidencia</th></tr></thead><tbody>'
+            + ''.join(summary_rows) + '</tbody></table></div>' + ''.join(detail_blocks)
+        )
+    output.append(_scientific_note(
+        "Period prevalence uses the eligible population; cumulative incidence uses the disease-specific population at risk. Diferencias must be interpreted with their denominators and observation window, not as raw event-count discrepancies."
+    ))
+    return ''.join(output)
+
+
+def _render_reproducibility(payload: Mapping[str, Any]) -> str:
+    provenance = _mapping(payload.get("execution_provenance"))
+    observed = _mapping_sequence(provenance.get("persisted_execution_commands"))
+    configured = _mapping_sequence(provenance.get("configured_simulators"))
+    parts: list[str] = []
+    if observed:
+        command_text = json.dumps(_plain_value(observed), indent=2, ensure_ascii=False)
+        parts.append('<details><summary>Comando(s) exacto(s) de ejecución persistido(s)</summary><pre>' + escape(command_text) + '</pre></details>')
+    elif configured:
+        command_text = json.dumps(_plain_value(configured), indent=2, ensure_ascii=False)
+        parts.append(
+            '<details><summary>Contratos configurados de lanzamiento de simuladores</summary><p class="muted">'
+            'La ejecución no persistió la línea de comandos completamente resuelta; se muestran contratos de configuración, no comandos que se afirme que fueron ejecutados exactamente.</p><pre>'
+            + escape(command_text) + '</pre></details>'
+        )
+    return ''.join(parts)
+
+
+def _observation_window_label(cohort: Mapping[str, Any]) -> str:
+    start = cohort.get("observation_start_date")
+    end = cohort.get("observation_end_date")
+    if start is None and end is None:
+        return "Not configured"
+    if start is None or end is None:
+        return "Incomplete configuration"
+    return f"{start} – {end}"
 
 def _render_html(payload: Mapping[str, Any]) -> str:
     summary = _mapping(payload.get("executive_summary"))
@@ -963,48 +1461,316 @@ def _render_html(payload: Mapping[str, Any]) -> str:
         discrepancies=discrepancies,
     )
 
-    return f"""<!doctype html>
-<html lang="en">
+    html = f"""<!doctype html>
+<html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(str(payload.get('experiment_name') or 'Scientific validation report'))}</title>
 <style>
 :root{{--ink:#172033;--muted:#657187;--line:#dbe2ea;--paper:#fff;--canvas:#f4f6f8;--navy:#183b63;--blue:#286da8;--green:#18734a;--amber:#9a5c00;--red:#a62b39;--soft-green:#edf8f2;--soft-amber:#fff7e8;--soft-red:#fff1f3;--soft-blue:#eef6fd;--soft:#f7f9fb}}
-*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.62 Georgia,"Times New Roman",serif}}main{{max-width:1080px;margin:auto;padding:30px 22px 76px}}header,.paper-section{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:32px 36px;margin-bottom:22px;box-shadow:0 2px 9px rgba(22,40,65,.035)}}h1,h2,h3,.eyebrow,.label,.badge,nav,.value,.verdict-value,.answer,summary,th{{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}h1{{font-size:2.15rem;line-height:1.16;margin:4px 0 8px}}h2{{font-size:1.42rem;color:var(--navy);margin:0 0 19px}}h3{{font-size:1.04rem;margin:21px 0 9px}}p{{margin:9px 0}}.eyebrow,.label{{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}}.eyebrow{{color:var(--blue)}}.muted{{color:var(--muted)}}.verdict-grid{{display:grid;grid-template-columns:minmax(220px,.58fr) 1.95fr;gap:20px;margin-top:23px}}.verdict-box{{padding:24px;border-radius:10px;background:{_decision_background(decision)};border:1px solid {_decision_border(decision)}}}.verdict-value{{font-size:2.2rem;font-weight:900;color:{_decision_color(decision)};margin:3px 0}}.answer{{font-size:1.08rem;font-weight:850;line-height:1.35}}.abstract{{border-left:5px solid {_decision_color(decision)};padding:18px 22px;background:#fafbfd;border-radius:8px}}.abstract p{{margin:7px 0}}.cards,.summary-grid,.figure-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}}.card,.finding-panel,.method-box,.discussion-block{{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}}.value{{display:block;font-size:1.08rem;font-weight:850;margin-top:3px;overflow-wrap:anywhere}}nav{{margin-top:22px;padding-top:17px;border-top:1px solid var(--line)}}nav a{{color:var(--blue);text-decoration:none;font-weight:700;margin:4px 18px 4px 0;display:inline-block}}table{{width:100%;border-collapse:collapse;font-size:.91rem}}th,td{{padding:10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}}th{{background:#f5f8fb;color:var(--navy);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}}.badge{{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.7rem;font-weight:850;text-transform:uppercase}}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{{background:var(--soft-green);color:var(--green)}}.badge-review,.badge-warning,.badge-high,.badge-partially-comparable,.badge-plausible,.badge-low-count{{background:var(--soft-amber);color:var(--amber)}}.badge-fail,.badge-failed,.badge-critical,.badge-blocking,.badge-urgent,.badge-not-demonstrated{{background:var(--soft-red);color:var(--red)}}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-not-assessable,.badge-out-of-scope,.badge-unverified,.badge-not-testable{{background:#eef1f5;color:#566273}}.delta-review{{color:var(--red);font-weight:850}}.delta-acceptable{{color:var(--green);font-weight:850}}.delta-neutral{{color:var(--muted);font-weight:850}}.evidence-profile{{display:grid;gap:10px;margin:13px 0 4px}}.evidence-row{{display:grid;grid-template-columns:minmax(155px,.75fr) 2fr minmax(90px,.45fr);gap:13px;align-items:center}}.evidence-track{{height:9px;background:#e7ebf0;border-radius:99px;overflow:hidden}}.evidence-fill{{height:100%;border-radius:99px;background:#7c8898}}.evidence-fill.pass{{background:var(--green)}}.evidence-fill.partial,.evidence-fill.review{{background:var(--amber)}}.evidence-fill.fail,.evidence-fill.incomplete{{background:var(--red)}}.evidence-label{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.85rem;font-weight:750}}.evidence-state{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.8rem;color:var(--muted);text-align:right}}.finding{{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}}.finding h3{{margin:7px 0 12px}}.finding-grid{{display:grid;grid-template-columns:1fr 1fr;gap:11px}}.finding-wide{{grid-column:1/-1}}.stat-list{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-top:8px}}.stat-item{{padding:9px 11px;background:var(--soft);border-radius:7px}}.callout{{background:var(--soft-blue);border-left:4px solid var(--blue);padding:15px 18px;border-radius:7px}}details{{border:1px solid var(--line);border-radius:8px;padding:12px 15px;margin:10px 0;background:#fff}}summary{{cursor:pointer;font-weight:780;color:var(--navy)}}.chart{{border:1px solid var(--line);border-radius:9px;padding:12px;background:#fff;overflow-x:auto}}.chart svg{{width:100%;height:auto;min-width:520px}}.matrix-pass td.status{{background:var(--soft-green)}}.matrix-review td.status,.matrix-low-count td.status{{background:var(--soft-amber)}}.matrix-fail td.status{{background:var(--soft-red)}}.recommendation{{display:grid;grid-template-columns:40px 1fr;gap:13px;padding:16px 0;border-bottom:1px solid var(--line)}}.rank{{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font:850 .9rem Inter,ui-sans-serif,system-ui,sans-serif}}ul{{padding-left:21px}}.empty{{color:var(--muted);font-style:italic}}.footer{{text-align:center;color:var(--muted);font:normal .8rem Inter,ui-sans-serif,system-ui,sans-serif;margin-top:20px}}@media(max-width:760px){{.verdict-grid,.finding-grid,.evidence-row{{grid-template-columns:1fr}}header,.paper-section{{padding:22px}}.finding-wide{{grid-column:auto}}.evidence-state{{text-align:left}}}}@media print{{body{{background:#fff}}main{{max-width:none;padding:0}}header,.paper-section{{box-shadow:none;break-inside:avoid}}nav{{display:none}}details{{break-inside:avoid}}}}
+*{{box-sizing:border-box}}html{{scroll-behavior:smooth}}body{{margin:0;background:var(--canvas);color:var(--ink);font:15px/1.62 Georgia,"Times New Roman",serif}}main{{max-width:1080px;margin:auto;padding:30px 22px 76px}}header,.paper-section{{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:32px 36px;margin-bottom:22px;box-shadow:0 2px 9px rgba(22,40,65,.035)}}h1,h2,h3,.eyebrow,.label,.badge,nav,.value,.verdict-value,.answer,summary,th{{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}}h1{{font-size:2.15rem;line-height:1.16;margin:4px 0 8px}}h2{{font-size:1.42rem;color:var(--navy);margin:0 0 19px}}h3{{font-size:1.04rem;margin:21px 0 9px}}p{{margin:9px 0}}.eyebrow,.label{{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}}.eyebrow{{color:var(--blue)}}.muted{{color:var(--muted)}}.verdict-grid{{display:grid;grid-template-columns:minmax(220px,.58fr) 1.95fr;gap:20px;margin-top:23px}}.verdict-box{{padding:24px;border-radius:10px;background:{_decision_background(decision)};border:1px solid {_decision_border(decision)}}}.verdict-value{{font-size:2.2rem;font-weight:900;color:{_decision_color(decision)};margin:3px 0}}.answer{{font-size:1.08rem;font-weight:850;line-height:1.35}}.abstract{{border-left:5px solid {_decision_color(decision)};padding:18px 22px;background:#fafbfd;border-radius:8px}}.abstract p{{margin:7px 0}}.cards,.summary-grid,.figure-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}}.card,.finding-panel,.method-box,.discussion-block{{border:1px solid var(--line);border-radius:9px;padding:15px;background:#fbfcfe}}.value{{display:block;font-size:1.08rem;font-weight:850;margin-top:3px;overflow-wrap:anywhere}}nav{{margin-top:22px;padding-top:17px;border-top:1px solid var(--line)}}nav a{{color:var(--blue);text-decoration:none;font-weight:700;margin:4px 18px 4px 0;display:inline-block}}table{{width:100%;border-collapse:collapse;font-size:.91rem}}th,td{{padding:10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}}th{{background:#f5f8fb;color:var(--navy);font-size:.75rem;text-transform:uppercase;letter-spacing:.04em}}.badge{{display:inline-block;border-radius:999px;padding:3px 9px;font-size:.7rem;font-weight:850;text-transform:uppercase}}.badge-pass,.badge-ready,.badge-succeeded,.badge-performed{{background:var(--soft-green);color:var(--green)}}.badge-review,.badge-warning,.badge-high,.badge-partially-comparable,.badge-plausible,.badge-low-count{{background:var(--soft-amber);color:var(--amber)}}.badge-fail,.badge-failed,.badge-critical,.badge-blocking,.badge-urgent,.badge-not-demonstrated{{background:var(--soft-red);color:var(--red)}}.badge-inconclusive,.badge-incomplete,.badge-unknown,.badge-not-evaluated,.badge-not-informative,.badge-not-assessable,.badge-out-of-scope,.badge-unverified,.badge-not-testable{{background:#eef1f5;color:#566273}}.delta-review{{color:var(--red);font-weight:850}}.delta-acceptable{{color:var(--green);font-weight:850}}.delta-neutral{{color:var(--muted);font-weight:850}}.evidence-profile{{display:grid;gap:10px;margin:13px 0 4px}}.evidence-row{{display:grid;grid-template-columns:minmax(155px,.75fr) 2fr minmax(90px,.45fr);gap:13px;align-items:center}}.evidence-track{{height:9px;background:#e7ebf0;border-radius:99px;overflow:hidden}}.evidence-fill{{height:100%;border-radius:99px;background:#7c8898}}.evidence-fill.pass{{background:var(--green)}}.evidence-fill.partial,.evidence-fill.review{{background:var(--amber)}}.evidence-fill.fail,.evidence-fill.incomplete{{background:var(--red)}}.evidence-label{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.85rem;font-weight:750}}.evidence-state{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:.8rem;color:var(--muted);text-align:right}}.finding{{border:1px solid var(--line);border-left:5px solid var(--red);border-radius:10px;padding:18px;margin:14px 0;background:#fff}}.finding h3{{margin:7px 0 12px}}.finding-grid{{display:grid;grid-template-columns:1fr 1fr;gap:11px}}.finding-wide{{grid-column:1/-1}}.stat-list{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px;margin-top:8px}}.stat-item{{padding:9px 11px;background:var(--soft);border-radius:7px}}.callout{{background:var(--soft-blue);border-left:4px solid var(--blue);padding:15px 18px;border-radius:7px}}details{{border:1px solid var(--line);border-radius:8px;padding:12px 15px;margin:10px 0;background:#fff}}summary{{cursor:pointer;font-weight:780;color:var(--navy)}}.chart{{border:1px solid var(--line);border-radius:9px;padding:12px;background:#fff;overflow-x:auto}}.chart svg{{width:100%;height:auto;min-width:520px}}.table-scroll{{overflow-x:auto}}.window-banner{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 18px}}.window-banner span{{background:var(--soft-blue);border:1px solid #d7e8f8;border-radius:8px;padding:12px 14px;font-family:Inter,ui-sans-serif,system-ui,sans-serif}}.scientific-note{{margin-top:16px}}pre{{white-space:pre-wrap;overflow-wrap:anywhere;background:#101827;color:#e7edf5;padding:15px;border-radius:8px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}}code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}.matrix-pass td.status{{background:var(--soft-green)}}.matrix-review td.status,.matrix-low-count td.status{{background:var(--soft-amber)}}.matrix-fail td.status{{background:var(--soft-red)}}.recommendation{{display:grid;grid-template-columns:40px 1fr;gap:13px;padding:16px 0;border-bottom:1px solid var(--line)}}.rank{{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--navy);color:#fff;font:850 .9rem Inter,ui-sans-serif,system-ui,sans-serif}}ul{{padding-left:21px}}.empty{{color:var(--muted);font-style:italic}}.footer{{text-align:center;color:var(--muted);font:normal .8rem Inter,ui-sans-serif,system-ui,sans-serif;margin-top:20px}}@media(max-width:760px){{.verdict-grid,.finding-grid,.evidence-row{{grid-template-columns:1fr}}header,.paper-section{{padding:22px}}.finding-wide{{grid-column:auto}}.evidence-state{{text-align:left}}}}@media print{{body{{background:#fff}}main{{max-width:none;padding:0}}header,.paper-section{{box-shadow:none;break-inside:avoid}}nav{{display:none}}details{{break-inside:avoid}}}}
 </style>
 </head>
 <body><main>
 <header id="top">
-<div class="eyebrow">Psynthea scientific validation</div>
+<div class="eyebrow">Validación científica de Psynthea</div>
 <h1>{escape(str(payload.get('experiment_name') or payload.get('experiment_id') or 'Experiment'))}</h1>
-<p class="muted">Publication-oriented equivalence report · schema {_REPORT_SCHEMA_VERSION}</p>
+<p class="muted">Informe de equivalencia orientado a publicación · schema {_REPORT_SCHEMA_VERSION}</p>
 <div class="verdict-grid">
-<div class="verdict-box"><span class="label">Scientific verdict</span><div class="verdict-value">{escape(scientific_verdict)}</div><div class="answer">{escape(verdict)}</div><p class="muted">Pipeline decision: {escape(decision)} · Evaluated scope: {escape(module_label)}</p></div>
-<div class="abstract"><span class="label">Structured abstract</span>{narrative.abstract()}</div>
+<div class="verdict-box"><span class="label">Conclusión científica</span><div class="verdict-value">{escape(scientific_verdict)}</div><div class="answer">{escape(verdict)}</div><p class="muted">Decisión del pipeline: {escape(decision)} · Ámbito evaluado: {escape(module_label)}</p></div>
+<div class="abstract"><span class="label">Resumen estructurado</span>{narrative.abstract()}</div>
 </div>
-<h3>Evidence profile</h3>{_overall_evidence(summary, validation, knowledge, root)}
-<h3>Experiment overview</h3>
+<h3>Perfil de evidencia</h3>{_overall_evidence(summary, validation, knowledge, root)}
+<h3>Resumen del experimento</h3>
 <div class="summary-grid" style="margin-top:15px">
-{_metric_card('Cohort size', cohort.get('population_size'))}
-{_metric_card('Random seed', cohort.get('seed'))}
-{_metric_card('Reference date', cohort.get('reference_date'))}
-{_metric_card('Age range', _age_range_label(cohort))}
-{_metric_card('Evaluated modules', module_label)}
-{_metric_card('Simulation engines', 'Synthea / Psynthea')}
-{_metric_card('FDR-significant endpoints', _mapping(summary.get('validation')).get('significant_after_fdr_count'))}
+{_metric_card('Tamaño de cohorte', cohort.get('population_size'))}
+{_metric_card('Semilla aleatoria', cohort.get('seed'))}
+{_metric_card('Fecha de referencia', cohort.get('reference_date'))}
+{_metric_card('Ventana observacional', _observation_window_label(cohort))}
+{_metric_card('Rango de edad', _age_range_label(cohort))}
+{_metric_card('Módulos evaluados', module_label)}
+{_metric_card('Motores de simulación', 'Synthea / Psynthea')}
+{_metric_card('Variables significativas tras FDR', _mapping(summary.get('validation')).get('significant_after_fdr_count'))}
 </div>
 {module_details}
-<nav><a href="#methods">Methods</a><a href="#results">Results</a><a href="#discussion">Discussion</a><a href="#actions">Recommendations</a><a href="#appendix">Appendix</a></nav>
+<nav><a href="#methods">Métodos</a><a href="#demographics">Demografía</a><a href="#epidemiology">Epidemiología</a><a href="#results">Resultados</a><a href="#discussion">Discusión</a><a href="#actions">Recomendaciones</a><a href="#appendix">Anexo</a></nav>
 </header>
-<section class="paper-section" id="methods"><h2>1. Methods</h2>{_methods_and_scope(payload, validation, knowledge)}</section>
-<section class="paper-section" id="results"><h2>2. Results</h2>{_largest_discrepancy_summary(validation, discrepancies)}<h3>Cohort-level outputs</h3>{_cohort_bar_chart(validation)}{_cohort_comparison_v13(validation)}<h3>Domain concordance</h3>{_domain_concordance_matrix(validation, discrepancies)}<h3>Principal findings</h3>{_render_discrepancies(discrepancies, narrative)}<h3>Statistical synthesis</h3>{_statistical_evidence_v13(validation, discrepancies)}</section>
-<section class="paper-section" id="discussion"><h2>3. Discussion</h2>{_discussion_sections(narrative, root, discrepancies)}{_limitations_v13(knowledge, root, discrepancies)}</section>
-<section class="paper-section" id="actions"><h2>4. Recommendations and research readiness</h2>{_recommendations_v13(knowledge, discrepancies)}{_research_readiness(decision, summary, knowledge, discrepancies)}</section>
-<section class="paper-section" id="appendix"><h2>5. Scientific appendix</h2>{_validation_scope_summary(knowledge)}{_technical_appendix(payload, validation, knowledge, root)}</section>
-<div class="footer">Generated deterministically from persisted Validation, Knowledge and Root Cause artifacts. The reporting stage formats evidence and does not recalculate scientific results.</div>
+<section class="paper-section" id="methods"><h2>1. Métodos</h2>{_methods_and_scope(payload, validation, knowledge)}{_render_reproducibility(payload)}</section>
+<section class="paper-section" id="demographics"><h2>2. Comparabilidad demográfica basal</h2>{_render_demographic_comparability(validation, cohort)}</section>
+<section class="paper-section" id="epidemiology"><h2>3. Epidemiología en la ventana observacional</h2>{_render_temporal_epidemiology(validation, cohort)}</section>
+<section class="paper-section" id="results"><h2>4. Resultados de validación</h2>{_largest_discrepancy_summary(validation, discrepancies)}<h3>Resultados a nivel de cohorte</h3>{_cohort_bar_chart(validation)}{_cohort_comparison_v13(validation)}<h3>Concordancia por dominio</h3>{_domain_concordance_matrix(validation, discrepancies)}<h3>Hallazgos principales</h3>{_render_discrepancies(discrepancies, narrative)}<h3>Síntesis estadística</h3>{_statistical_evidence_v13(validation, discrepancies)}</section>
+<section class="paper-section" id="discussion"><h2>5. Discusión</h2>{_discussion_sections(narrative, root, discrepancies)}{_limitations_v13(knowledge, root, discrepancies)}</section>
+<section class="paper-section" id="actions"><h2>6. Recomendaciones y preparación para uso en investigación</h2>{_recommendations_v13(knowledge, discrepancies)}{_research_readiness(decision, summary, knowledge, discrepancies)}</section>
+<section class="paper-section" id="appendix"><h2>7. Anexo científico</h2>{_validation_scope_summary(knowledge)}{_technical_appendix(payload, validation, knowledge, root)}</section>
+<div class="footer">Generado de forma determinista a partir de los artefactos persistidos de Validación, Conocimiento y Análisis de Causa Raíz. La etapa de informe presenta la evidencia y no recalcula los resultados científicos.</div>
 </main></body></html>"""
+    return _localize_report_html_es(html)
 
+
+def _localize_report_html_es(html: str) -> str:
+    """Localize every researcher-facing HTML text node to Spanish.
+
+    Reproducibility payloads inside ``pre``/``code`` and CSS/JavaScript blocks
+    remain verbatim. The transformation is deterministic and does not modify
+    scientific values, identifiers, attributes or persisted evidence.
+    """
+
+    import re
+
+    exact = {
+        "Hypertension equivalence: Synthea vs psynthea": "Equivalencia de hipertensión: Synthea frente a Psynthea",
+        "Scientific validation report": "Informe de validación científica",
+        "Experiment": "Experimento",
+        "REVIEW REQUIRED": "REVISIÓN NECESARIA",
+        "PASS": "APROBADO",
+        "FAIL": "NO APROBADO",
+        "INCOMPLETE": "INCOMPLETO",
+        "NOT COMPARABLE": "NO COMPARABLE",
+        "Psynthea cannot yet replace Synthea for the evaluated scope": "Psynthea todavía no puede sustituir a Synthea en el ámbito evaluado",
+        "Objective.": "Objetivo.",
+        "Methods.": "Métodos.",
+        "Results.": "Resultados.",
+        "Conclusion.": "Conclusión.",
+        "Functional evidence": "Evidencia funcional",
+        "Statistical evidence": "Evidencia estadística",
+        "Clinical and knowledge evidence": "Evidencia clínica y de conocimiento",
+        "Causal evidence": "Evidencia causal",
+        "Pass": "Aprobado",
+        "Fail": "No aprobado",
+        "Inconclusive": "No concluyente",
+        "Review": "Revisión",
+        "Design": "Diseño",
+        "Cohort": "Cohorte",
+        "Population:": "Población:",
+        "Seed:": "Semilla:",
+        "Modules:": "Módulos:",
+        "Decision principle": "Principio de decisión",
+        "Scientific interpretation.": "Interpretación científica.",
+        "Largest ranked discrepancy.": "Mayor discrepancia priorizada.",
+        "Clinical output": "Resultado clínico",
+        "Scientific screening": "Evaluación científica",
+        "review": "revisión",
+        "performed": "realizada",
+        "pass": "aprobado",
+        "not informative": "no informativo",
+        "not evaluated": "no evaluado",
+        "N/A": "No disponible",
+        "Domain": "Dominio",
+        "Output completeness": "Completitud de resultados",
+        "Volume": "Volumen",
+        "Clinical concordance": "Concordancia clínica",
+        "Overall": "Global",
+        "high": "alta",
+        "blocking": "bloqueante",
+        "Observation": "Observación",
+        "Interpretation": "Interpretación",
+        "Scientific implication": "Implicación científica",
+        "Statistical details": "Detalles estadísticos",
+        "Jaccard index": "Índice de Jaccard",
+        "Overlap coefficient": "Coeficiente de solapamiento",
+        "Jensen–Shannon divergence": "Divergencia de Jensen–Shannon",
+        "Risk ratio": "Riesgo relativo",
+        "FDR-adjusted p-value": "Valor p ajustado por FDR",
+        "95% confidence interval": "Intervalo de confianza del 95 %",
+        "Synthea prevalence": "Prevalencia en Synthea",
+        "Psynthea prevalence": "Prevalencia en Psynthea",
+        "Evidence provenance": "Procedencia de la evidencia",
+        "Additional scientific findings (3)": "Hallazgos científicos adicionales (3)",
+        "Population prevalence profile": "Perfil de prevalencia poblacional",
+        "Modules tested": "Módulos evaluados",
+        "Nominally significant": "Significativos nominalmente",
+        "Significant after FDR": "Significativos tras FDR",
+        "Warnings": "Advertencias",
+        "Module": "Módulo",
+        "Statistical status": "Estado estadístico",
+        "Nominal": "Nominal",
+        "After FDR": "Tras FDR",
+        "Comparison": "Comparación",
+        "comparable": "comparable",
+        "Risk-ratio forest plot": "Diagrama de bosque de riesgos relativos",
+        "Overall interpretation": "Interpretación global",
+        "Global interpretation": "Interpretación global",
+        "Clinical implications": "Implicaciones clínicas",
+        "Methodological implications": "Implicaciones metodológicas",
+        "Causal interpretation": "Interpretación causal",
+        "Leading hypothesis": "Hipótesis principal",
+        "Evidence supporting this hypothesis": "Evidencia que respalda esta hipótesis",
+        "Current confidence": "Confianza actual",
+        "Required verification": "Verificación necesaria",
+        "Future work": "Trabajo futuro",
+        "Limitations": "Limitaciones",
+        "Outstanding research questions": "Preguntas de investigación pendientes",
+        "Problem.": "Problema.",
+        "Likely mechanism.": "Mecanismo probable.",
+        "Required action.": "Acción necesaria.",
+        "Success criterion.": "Criterio de éxito.",
+        "Current status": "Estado actual",
+        "Not research ready": "No apto todavía para uso en investigación",
+        "Blocking ranked discrepancies": "Discrepancias bloqueantes priorizadas",
+        "Knowledge blocking findings": "Hallazgos bloqueantes de conocimiento",
+        "Next validation": "Siguiente validación",
+        "Required": "Necesaria",
+        "Requirements before research use": "Requisitos previos al uso en investigación",
+        "Validation coverage": "Cobertura de validación",
+        "Actionability": "Capacidad de actuación",
+        "Clinical": "Clínica",
+        "Epidemiological": "Epidemiológica",
+        "Spanish-context": "Contexto español",
+        "Statistical": "Estadística",
+        "Structural": "Estructural",
+        "Reproducibility and provenance": "Reproducibilidad y procedencia",
+        "Pipeline stages completed": "Etapas del pipeline completadas",
+        "Hashed source artifacts": "Artefactos fuente con hash",
+        "Report schema": "Esquema del informe",
+        "Generated at": "Generado el",
+        "Machine-readable evidence.": "Evidencia legible por máquina.",
+        "Pipeline execution": "Ejecución del pipeline",
+        "Stage": "Etapa",
+        "Status": "Estado",
+        "Summary": "Resumen",
+        "Error": "Error",
+        "6. Recomendaciones and research readiness": "6. Recomendaciones y preparación para uso en investigación",
+        "Conditions": "Condiciones",
+        "Encounters": "Encuentros",
+        "Medications": "Medicaciones",
+        "Observations": "Observaciones",
+        "Patients": "Pacientes",
+        "Procedures": "Procedimientos",
+    }
+
+    static_phrases = {
+        "Bar length represents evidence status, not a probability or newly calculated confidence score.": "La longitud de la barra representa el estado de la evidencia, no una probabilidad ni una puntuación de confianza calculada de nuevo.",
+        "Deterministic comparison of persisted Synthea and Psynthea cohorts using functional, statistical, clinical-knowledge and root-cause evidence.": "Comparación determinista de cohortes persistidas de Synthea y Psynthea mediante evidencia funcional, estadística, clínico-semántica y de análisis de causa raíz.",
+        "Equivalence requires complete outputs, acceptable effect magnitude, clinically concordant content and no unresolved blocking evidence.": "La equivalencia exige resultados completos, una magnitud de efecto aceptable, contenido clínicamente concordante y ausencia de evidencia bloqueante no resuelta.",
+        "The report consolidates upstream results and does not recalculate tests, acquire external references or infer new causal mechanisms.": "El informe consolida los resultados previos y no recalcula pruebas, no incorpora referencias externas ni infiere nuevos mecanismos causales.",
+        "Persisted cohorts were compared using deterministic functional checks, multiplicity-adjusted statistical evidence, clinical and epidemiological interpretation, and hypothesis-generating root-cause analysis.": "Las cohortes persistidas se compararon mediante comprobaciones funcionales deterministas, evidencia estadística ajustada por multiplicidad, interpretación clínica y epidemiológica y análisis de causa raíz orientado a generar hipótesis.",
+        "Scientific equivalence was not demonstrated. Psynthea should not replace Synthea for downstream research in the evaluated scope until blocking discrepancies are resolved and independently reproduced.": "No se demostró equivalencia científica. Psynthea no debe sustituir a Synthea en investigaciones posteriores dentro del ámbito evaluado hasta que se resuelvan las discrepancias bloqueantes y se reproduzcan de forma independiente.",
+        "Period prevalence uses the eligible population; cumulative incidence uses the disease-specific population at risk. Differences must be interpreted with their denominators and observation window, not as raw event-count discrepancies.": "La prevalencia de periodo utiliza la población elegible; la incidencia acumulada utiliza la población específica en riesgo para cada enfermedad. Las diferencias deben interpretarse junto con sus denominadores y su ventana observacional, no como discrepancias brutas en el número de eventos.",
+        "Colour represents the scientific screening status, not the mathematical sign of the difference. Low-count comparisons are shown in amber because relative percentages are unstable at small denominators; they are not promoted to material scientific discrepancies unless the low-count review threshold is met.": "El color representa el estado de la evaluación científica, no el signo matemático de la diferencia. Las comparaciones con recuentos bajos se muestran en ámbar porque los porcentajes relativos son inestables con denominadores pequeños; no se consideran discrepancias científicas materiales salvo que alcancen el umbral predefinido de revisión por bajo recuento.",
+        "The magnitude of the between-generator difference exceeded the configured materiality threshold and is inconsistent with equivalent event-generation behaviour.": "La magnitud de la diferencia entre generadores superó el umbral de materialidad configurado y no es compatible con un comportamiento equivalente de generación de eventos.",
+        "Downstream estimates may differ by generator; replacement is not scientifically justified until this discrepancy is resolved.": "Las estimaciones posteriores pueden variar según el generador; la sustitución no está científicamente justificada hasta que se resuelva esta discrepancia.",
+        "Values are rounded for readability; full precision remains in the source artifacts. JSD ranges from 0 (identical distributions) toward 1 (greater divergence).": "Los valores se redondean para facilitar la lectura; la precisión completa permanece en los artefactos fuente. La JSD varía desde 0 (distribuciones idénticas) hacia 1 (mayor divergencia).",
+        "This finding is supported by persisted functional or knowledge-layer evidence; no endpoint-level statistical estimate was extracted.": "Este hallazgo está respaldado por evidencia funcional o de la capa de conocimiento persistida; no se extrajo una estimación estadística específica del desenlace.",
+        "The generators do not represent sufficiently comparable clinical concepts or concept-frequency distributions for this domain.": "Los generadores no representan conceptos clínicos ni distribuciones de frecuencia conceptual suficientemente comparables en este dominio.",
+        "Phenotyping, monitoring and outcome analyses based on observations may yield materially different results.": "Los análisis de fenotipado, monitorización y resultados basados en observaciones pueden producir resultados materialmente diferentes.",
+        "The population-level clinical burden is not reproduced within the evaluated equivalence criteria.": "La carga clínica a nivel poblacional no se reproduce dentro de los criterios de equivalencia evaluados.",
+        "Values are rounded for readability; full precision remains in the source artifacts.": "Los valores se redondean para facilitar la lectura; la precisión completa permanece en los artefactos fuente.",
+        "Findings are ordered by scientific priority. Internal ranking scores remain available only in the machine-readable report.": "Los hallazgos se ordenan por prioridad científica. Las puntuaciones internas de priorización solo permanecen disponibles en el informe legible por máquina.",
+        "Statistical significance alone does not establish equivalence. Functional completeness, effect magnitude, clinical concordance and multiplicity-adjusted evidence are considered together.": "La significación estadística por sí sola no demuestra equivalencia. Se consideran conjuntamente la completitud funcional, la magnitud del efecto, la concordancia clínica y la evidencia ajustada por multiplicidad.",
+        "Multiple independent evidence layers converge on the same conclusion: the observed differences are not adequately explained by a single minor fluctuation and instead indicate non-equivalent generator behaviour within the evaluated scope.": "Múltiples capas independientes de evidencia convergen en la misma conclusión: las diferencias observadas no se explican adecuadamente por una única fluctuación menor y apuntan a un comportamiento no equivalente de los generadores dentro del ámbito evaluado.",
+        "Agreement in cohort size or successful pipeline execution must not be interpreted as scientific equivalence. Replacement requires concordant output retention, event volumes, clinical semantics and endpoint-level evidence after multiplicity adjustment.": "La concordancia en el tamaño de cohorte o la ejecución satisfactoria del pipeline no deben interpretarse como equivalencia científica. La sustitución exige concordancia en la retención de resultados, los volúmenes de eventos, la semántica clínica y la evidencia por desenlace tras el ajuste por multiplicidad.",
+        "The leading hypothesis concerns configuration, but the available evidence does not yet establish a causal mechanism.": "La hipótesis principal se relaciona con la configuración, pero la evidencia disponible todavía no establece un mecanismo causal.",
+        "The persisted root-cause artifact links 1 supporting finding(s) to this hypothesis.": "El artefacto persistido de causa raíz vincula un hallazgo de apoyo con esta hipótesis.",
+        "None; causal status: inconclusive.": "Ninguna; estado causal: no concluyente.",
+        "Deterministic verification has not yet been performed. Patient-level traces and controlled counterfactual reruns are required before causal attribution.": "Todavía no se ha realizado una verificación determinista. Se requieren trazas a nivel de paciente y nuevas ejecuciones contrafactuales controladas antes de atribuir causalidad.",
+        "Future validation should prioritise patient-level trace comparison, deterministic verification of the leading causal hypothesis, replication across independent seeds and cohort sizes, and confirmation against the predefined module-specific equivalence tolerances.": "La validación futura debe priorizar la comparación de trazas a nivel de paciente, la verificación determinista de la hipótesis causal principal, la replicación con semillas y tamaños de cohorte independientes y la confirmación frente a las tolerancias de equivalencia predefinidas para cada módulo.",
+        "This report reflects one configured execution; generalisation requires replication across independent seeds, cohort sizes and reference dates.": "Este informe refleja una única ejecución configurada; la generalización exige replicación con semillas, tamaños de cohorte y fechas de referencia independientes.",
+        "No deterministic causal mechanism was confirmed for the observed discrepancies.": "No se confirmó ningún mecanismo causal determinista para las discrepancias observadas.",
+        "The leading hypothesis lacks sufficient supporting evidence.": "La hipótesis principal carece de evidencia de apoyo suficiente.",
+        "No deterministic verification was available.": "No se dispuso de verificación determinista.",
+        "No non-refuted candidate remained after deterministic assessment.": "No quedó ningún candidato no refutado tras la evaluación determinista.",
+        "The causal search retained only the highest-priority hypotheses; additional alternatives may remain unexplored.": "La búsqueda causal conservó únicamente las hipótesis de mayor prioridad; pueden quedar alternativas adicionales sin explorar.",
+        "No deterministic verification protocol was available for the leading causal hypothesis.": "No se dispuso de un protocolo de verificación determinista para la hipótesis causal principal.",
+        "Resolve or justify all blocking discrepancies.": "Resolver o justificar todas las discrepancias bloqueantes.",
+        "Repeat the identical seeded cohort after remediation.": "Repetir la misma cohorte con idéntica semilla después de la corrección.",
+        "Replicate the experiment across independent seeds and cohort sizes.": "Replicar el experimento con semillas y tamaños de cohorte independientes.",
+        "Confirm that all predefined functional and statistical tolerances are met.": "Confirmar que se cumplen todas las tolerancias funcionales y estadísticas predefinidas.",
+        "Complete validation, knowledge, root-cause, integrity-hash and pipeline records are retained in the separately hashed JSON artifacts. They are intentionally not reproduced in the research-facing HTML.": "Los registros completos de validación, conocimiento, causa raíz, hashes de integridad y pipeline se conservan en los artefactos JSON con hash independiente. Deliberadamente no se reproducen en el HTML orientado a investigación.",
+    }
+
+    domain_es = {
+        "conditions": "condiciones",
+        "medications": "medicaciones",
+        "encounters": "encuentros",
+        "observations": "observaciones",
+        "procedures": "procedimientos",
+        "epidemiological": "epidemiología",
+        "epidemiology": "epidemiología",
+        "prevalence": "prevalencia",
+    }
+
+    def domain(value: str) -> str:
+        return domain_es.get(value.casefold(), value)
+
+    def translate_text(value: str) -> str:
+        leading = value[: len(value) - len(value.lstrip())]
+        trailing = value[len(value.rstrip()) :]
+        core = value.strip()
+        if not core:
+            return value
+        if core in exact:
+            return leading + exact[core] + trailing
+        for source, target in static_phrases.items():
+            core = core.replace(source, target)
+
+        core = re.sub(
+            r"To determine whether Psynthea reproduces Synthea outputs for (.*?) within the configured functional, statistical and clinical validation scope\.",
+            r"Determinar si Psynthea reproduce los resultados de Synthea para \1 dentro del ámbito configurado de validación funcional, estadística y clínica.",
+            core,
+        )
+        core = re.sub(
+            r"In this run, mean age differed by ([0-9.]+) years and the largest sex-category difference was ([0-9.]+) percentage points\. No large baseline imbalance is apparent from these baseline comparability checks; however, a single run does not establish demographic equivalence\. Confirm balance across seeds and with prespecified tests\.",
+            r"En esta ejecución, la edad media difirió en \1 años y la mayor diferencia entre categorías de sexo fue de \2 puntos porcentuales. Estas comprobaciones de comparabilidad basal no muestran un desequilibrio importante; sin embargo, una única ejecución no demuestra equivalencia demográfica. Debe confirmarse el equilibrio entre semillas mediante pruebas preespecificadas.",
+            core,
+        )
+
+        def material(match: re.Match[str]) -> str:
+            direction = "mayor" if match.group(1).casefold() == "more" else "menor"
+            item = domain(match.group(2))
+            return f"Psynthea generó un número materialmente {direction} de registros de {item}"
+
+        core = re.sub(r"Psynthea contained materially (more|fewer) ([A-Za-z]+) records", material, core)
+        core = re.sub(r"Psynthea emitted materially (more|fewer) ([A-Za-z]+) records than Synthea\.", lambda m: f"Psynthea generó un número materialmente {'mayor' if m.group(1).casefold() == 'more' else 'menor'} de registros de {domain(m.group(2))} que Synthea.", core)
+        core = core.replace(" than Synthea", " que Synthea")
+        core = core.replace(" versus ", " frente a ")
+        core = core.replace("95% CI", "IC del 95 %")
+        core = core.replace("FDR-adjusted p", "valor p ajustado por FDR")
+        core = core.replace("indicating that equivalence criteria were not met", "lo que indica que no se cumplieron los criterios de equivalencia")
+
+        core = re.sub(r"Clinical coding for ([A-Za-z]+) was not concordant between generators", lambda m: f"La codificación clínica de {domain(m.group(1))} no fue concordante entre generadores", core)
+        core = re.sub(r"Clinical coding for ([A-Za-z]+) was not concordant", lambda m: f"La codificación clínica de {domain(m.group(1))} no fue concordante", core)
+        core = re.sub(r"Clinical coding evidence for ([A-Za-z]+) was inconclusive", lambda m: f"La evidencia de codificación clínica para {domain(m.group(1))} no fue concluyente", core)
+        core = core.replace("shared clinical codes", "códigos clínicos compartidos")
+        core = re.sub(r"The prevalence of ([A-Za-z]+) differed between Synthea \((.*?)\) and Psynthea \((.*?)\)\.", lambda m: f"La prevalencia de {domain(m.group(1))} difirió entre Synthea ({m.group(2)}) y Psynthea ({m.group(3)}).", core)
+        core = re.sub(r"Prevalence differed for (.+)", r"La prevalencia difirió para \1", core)
+        core = re.sub(r"The prevalence of ([A-Za-z]+) differed between Synthea \((.*?)\) and Psynthea \((.*?)\);", lambda m: f"La prevalencia de {domain(m.group(1))} difirió entre Synthea ({m.group(2)}) y Psynthea ({m.group(3)});", core)
+
+        core = re.sub(r"Which module, lifecycle, denominator or exporter difference explains the material ([A-Za-z]+) divergence\?", lambda m: f"¿Qué diferencia de módulo, ciclo de vida, denominador o exportador explica la divergencia material en {domain(m.group(1))}?", core)
+        core = re.sub(r"Which generation, coding or mapping difference explains the ([A-Za-z]+) scientific discrepancy\?", lambda m: f"¿Qué diferencia de generación, codificación o mapeo explica la discrepancia científica en {domain(m.group(1))}?", core)
+        core = re.sub(r"Review ([A-Za-z]+) generation semantics", lambda m: f"Revisar la semántica de generación de {domain(m.group(1))}", core)
+        core = re.sub(r"Resolve ([A-Za-z]+) scientific discrepancy", lambda m: f"Resolver la discrepancia científica de {domain(m.group(1))}", core)
+        core = re.sub(r"Inspect the module transitions, lifecycle rules, denominators and exporter behaviour controlling ([A-Za-z]+), prioritising the evidence linked in this report\.", lambda m: f"Inspeccionar las transiciones del módulo, las reglas del ciclo de vida, los denominadores y el comportamiento del exportador que controlan {domain(m.group(1))}, priorizando la evidencia vinculada en este informe.", core)
+        core = re.sub(r"Repeat the identical seeded cohort after the fix, inspect patient-level ([A-Za-z]+) traces, then replicate across independent seeds and confirm that the endpoint meets the approved equivalence tolerance\.", lambda m: f"Repetir la misma cohorte con idéntica semilla después de la corrección, inspeccionar las trazas de {domain(m.group(1))} a nivel de paciente y, posteriormente, replicar con semillas independientes y confirmar que el desenlace cumple la tolerancia de equivalencia aprobada.", core)
+        core = core.replace("Not yet confirmed; module transitions, lifecycle semantics, denominators or exporter behaviour require investigation.", "Todavía no confirmado; deben investigarse las transiciones del módulo, la semántica del ciclo de vida, los denominadores o el comportamiento del exportador.")
+        core = core.replace("Review the persisted clinical finding, its source evidence and the corresponding generation or mapping logic before repeating validation.", "Revisar el hallazgo clínico persistido, su evidencia fuente y la lógica de generación o mapeo correspondiente antes de repetir la validación.")
+        core = core.replace("Clinical equivalence for this domain is blocked until the evidence is corrected.", "La equivalencia clínica de este dominio permanece bloqueada hasta que se corrija la evidencia.")
+        core = core.replace("Observation-based phenotyping, monitoring and outcome analyses may produce materially different results.", "Los análisis de fenotipado, monitorización y resultados basados en observaciones pueden producir resultados materialmente diferentes.")
+        core = core.replace("Population-level disease-burden estimates may be biased or non-comparable.", "Las estimaciones de carga de enfermedad a nivel poblacional pueden estar sesgadas o no ser comparables.")
+        core = core.replace("Not yet confirmed; code mapping, concept selection or event-frequency semantics may differ.", "Todavía no confirmado; pueden diferir el mapeo de códigos, la selección de conceptos o la semántica de frecuencia de eventos.")
+        core = core.replace("Not yet confirmed; disease incidence, eligibility logic, denominators or code mapping may differ.", "Todavía no confirmado; pueden diferir la incidencia de enfermedad, la lógica de elegibilidad, los denominadores o el mapeo de códigos.")
+        core = core.replace("Period prevalence uses the eligible population; cumulative incidence uses the disease-specific population at risk. Diferencias must be interpreted with their denominators and observation window, not as raw event-count discrepancies.", "La prevalencia de periodo utiliza la población elegible; la incidencia acumulada utiliza la población específica en riesgo para cada enfermedad. Las diferencias deben interpretarse junto con sus denominadores y su ventana observacional, no como discrepancias brutas en el número de eventos.")
+        core = core.replace("Psynthea contained materially more Cond...", "Psynthea generó más registros de condiciones...")
+        core = core.replace("Psynthea contained materially more Medi...", "Psynthea generó más registros de medicaciones...")
+        core = re.sub(r"Decisión del pipeline: REVIEW", "Decisión del pipeline: REVISIÓN", core)
+        core = re.sub(r"Decisión del pipeline: PASS", "Decisión del pipeline: APROBADO", core)
+        core = re.sub(r"Decisión del pipeline: FAIL", "Decisión del pipeline: NO APROBADO", core)
+
+        return leading + core + trailing
+
+    translated_parts: list[str] = []
+    protected_depth = 0
+    for part in re.split(r"(<[^>]+>)", html):
+        if part.startswith("<"):
+            lowered = part.casefold()
+            if re.match(r"<(pre|code|style|script)(?:\s|>)", lowered):
+                protected_depth += 1
+            translated_parts.append(part)
+            if re.match(r"</(pre|code|style|script)>", lowered):
+                protected_depth = max(0, protected_depth - 1)
+            continue
+        translated_parts.append(part if protected_depth else translate_text(part))
+    return "".join(translated_parts)
 
 def _scientific_conclusion_v13(
     decision: str,
@@ -1120,7 +1886,7 @@ def _cohort_comparison_v13(validation: Mapping[str, Any]) -> str:
         return '<p class="empty">No cohort-level numeric outputs were available.</p>'
     return (
         '<table><thead><tr><th>Clinical output</th><th>Synthea</th><th>Psynthea</th>'
-        '<th>Relative difference</th><th>Scientific screening</th></tr></thead><tbody>'
+        '<th>Diferencia relativa</th><th>Scientific screening</th></tr></thead><tbody>'
         + "".join(rows)
         + '</tbody></table><p class="muted">Colour represents the scientific screening status, not the mathematical sign of the difference. Low-count comparisons are shown in amber because relative percentages are unstable at small denominators; they are not promoted to material scientific discrepancies unless the low-count review threshold is met.</p>'
     )
@@ -1317,7 +2083,7 @@ def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequ
             f'<td>{_badge("performed" if stats.get("valid_for_statistical_comparison") else ("not assessable" if str(stats.get("validation_status") or "").casefold() in {"reference_empty", "reference_missing"} else "incomplete"))}</td></tr>'
         )
     table = (
-        '<table><thead><tr><th>Module</th><th>Statistical status</th><th>Nominal</th><th>After FDR</th><th>Comparison</th></tr></thead><tbody>'
+        '<table><thead><tr><th>Module</th><th>Estadísticoal status</th><th>Nominal</th><th>After FDR</th><th>Comparison</th></tr></thead><tbody>'
         + ''.join(rows)
         + '</tbody></table>'
         if rows
@@ -1339,7 +2105,7 @@ def _statistical_evidence_v13(validation: Mapping[str, Any], discrepancies: Sequ
         + '</div>'
         + table
         + forest
-        + '<div class="callout"><strong>Interpretation.</strong> Statistical significance alone does not establish equivalence. Functional completeness, effect magnitude, clinical concordance and multiplicity-adjusted evidence are considered together.</div>'
+        + '<div class="callout"><strong>Interpretation.</strong> Estadísticoal significance alone does not establish equivalence. Functional completeness, effect magnitude, clinical concordance and multiplicity-adjusted evidence are considered together.</div>'
     )
 
 
@@ -1351,7 +2117,7 @@ def _validation_scope(knowledge: Mapping[str, Any]) -> str:
     labels = {
         "ACTION": "Actionability checks", "CLINICAL": "Clinical checks",
         "EPI": "Epidemiological checks", "SPANISH": "Spanish-context checks",
-        "STAT": "Statistical checks", "STRUCT": "Structural checks",
+        "STAT": "Estadísticoal checks", "STRUCT": "Structural checks",
     }
     summary = ''.join(
         f'<div class="card"><span class="label">{escape(labels.get(prefix, prefix))}</span><span class="value">{len(values)} evaluated</span></div>'
@@ -1661,9 +2427,9 @@ def _statistical_summary_from_findings(findings: Sequence[Mapping[str, Any]]) ->
     if test_names:
         parts.append("Tests: " + ", ".join(dict.fromkeys(test_names)) + ".")
     if adjusted_values:
-        parts.append(f"Minimum FDR-adjusted p-value: {_format_p_value(min(adjusted_values))}.")
+        parts.append(f"Mínimo FDR-adjusted p-value: {_format_p_value(min(adjusted_values))}.")
     elif p_values:
-        parts.append(f"Minimum nominal p-value: {_format_p_value(min(p_values))}.")
+        parts.append(f"Mínimo nominal p-value: {_format_p_value(min(p_values))}.")
     if effect_labels:
         parts.append("Reported estimates: " + ", ".join(dict.fromkeys(effect_labels[:4])) + ".")
     return " ".join(parts) if parts else "No endpoint-specific statistical record was extracted."
@@ -1805,7 +2571,19 @@ def _to_float(value: Any) -> float | None:
 
 
 def _humanize(value: str) -> str:
-    return value.replace("_", " ").replace("-", " ").strip().title()
+    translations = {
+        "eligible_patients": "Pacientes elegibles",
+        "prevalent_patients": "Pacientes prevalentes",
+        "incident_patients": "Pacientes incidentes",
+        "at_risk_patients": "Pacientes en riesgo",
+        "period_prevalence": "Prevalencia de periodo",
+        "cumulative_incidence": "Incidencia acumulada",
+        "mean_incident_onset_age": "Edad media de inicio incidente",
+        "median_incident_onset_age": "Edad mediana de inicio incidente",
+        "min_incident_onset_age": "Edad mínima de inicio incidente",
+        "max_incident_onset_age": "Edad máxima de inicio incidente",
+    }
+    return translations.get(value, value.replace("_", " ").replace("-", " ").strip().title())
 
 
 def _format_p_value(value: float) -> str:
@@ -1852,7 +2630,7 @@ def _overall_evidence(
     items = (
         ("Functional evidence", functional),
         (
-            "Statistical evidence",
+            "Estadísticoal evidence",
             _aggregate_evidence_status(statistical_statuses),
         ),
         (
@@ -2080,7 +2858,7 @@ def _methods_and_scope(payload: Mapping[str, Any], validation: Mapping[str, Any]
     return (
         '<div class="figure-grid">'
         '<div class="method-box"><span class="label">Design</span><p>Deterministic comparison of persisted Synthea and Psynthea cohorts using functional, statistical, clinical-knowledge and root-cause evidence.</p></div>'
-        f'<div class="method-box"><span class="label">Cohort</span><p>Population: <strong>{escape(_fmt(cohort.get("population_size")))}</strong><br>Seed: <strong>{escape(_fmt(cohort.get("seed")))}</strong><br>Reference date: <strong>{escape(_fmt(cohort.get("reference_date")))}</strong><br>Age range: <strong>{escape(_age_range_label(cohort))}</strong><br>Modules: <strong>{escape(module_scope)}</strong></p></div>'
+        f'<div class="method-box"><span class="label">Cohort</span><p>Population: <strong>{escape(_fmt(cohort.get("population_size")))}</strong><br>Seed: <strong>{escape(_fmt(cohort.get("seed")))}</strong><br>Fecha de referencia: <strong>{escape(_fmt(cohort.get("reference_date")))}</strong><br>Rango de edad: <strong>{escape(_age_range_label(cohort))}</strong><br>Modules: <strong>{escape(module_scope)}</strong></p></div>'
         '<div class="method-box"><span class="label">Decision principle</span><p>Equivalence requires complete outputs, acceptable effect magnitude, clinically concordant content and no unresolved blocking evidence.</p></div>'
         '</div>'
         + _module_selection_details(cohort)
@@ -2089,16 +2867,59 @@ def _methods_and_scope(payload: Mapping[str, Any], validation: Mapping[str, Any]
 
 
 def _cohort_bar_chart(validation: Mapping[str, Any]) -> str:
-    cohorts=_cohort_counts(validation); a=_mapping(cohorts.get("synthea")); b=_mapping(cohorts.get("psynthea")); domains=_cohort_domains(validation)
-    vals=[max(float(a.get(d) or 0),float(b.get(d) or 0)) for d in domains]
-    if not domains or max(vals,default=0)<=0: return '<p class="empty">No numeric cohort outputs were available for visualisation.</p>'
-    width=900; row_h=52; height=48+row_h*len(domains); maxv=max(vals)
-    parts=[f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Cohort output comparison">', '<text x="230" y="22" font-size="12">Synthea</text><text x="315" y="22" font-size="12">Psynthea</text>']
-    for i,d in enumerate(domains):
-        y=43+i*row_h; av=float(a.get(d) or 0); bv=float(b.get(d) or 0); scale=520/maxv
-        parts += [f'<text x="8" y="{y+18}" font-size="13">{escape(_humanize(d))}</text>', f'<rect x="230" y="{y}" width="{av*scale:.1f}" height="15" rx="3" fill="#456f9a"/>', f'<rect x="230" y="{y+19}" width="{bv*scale:.1f}" height="15" rx="3" fill="#8aa9c5"/>', f'<text x="{235+av*scale:.1f}" y="{y+12}" font-size="11">{escape(_fmt(a.get(d)))}</text>', f'<text x="{235+bv*scale:.1f}" y="{y+31}" font-size="11">{escape(_fmt(b.get(d)))}</text>']
-    parts.append('</svg>')
-    return '<div class="chart">'+''.join(parts)+'</div>'
+    cohorts = _cohort_counts(validation)
+    synthea = _mapping(cohorts.get("synthea"))
+    psynthea = _mapping(cohorts.get("psynthea"))
+    domains = _cohort_domains(validation)
+    maxima = [
+        max(float(synthea.get(domain) or 0), float(psynthea.get(domain) or 0))
+        for domain in domains
+    ]
+    if not domains or max(maxima, default=0) <= 0:
+        return (
+            '<p class="empty">No se dispuso de resultados numéricos de cohorte '
+            'para la visualización.</p>'
+        )
+
+    width = 900
+    row_height = 52
+    legend_height = 42
+    height = legend_height + 28 + row_height * len(domains)
+    maximum = max(maxima)
+    synthea_color = "#456f9a"
+    psynthea_color = "#8aa9c5"
+
+    parts = [
+        f'<svg viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="Comparación de resultados de cohorte entre Synthea y Psynthea">',
+        f'<rect x="230" y="12" width="14" height="14" rx="3" fill="{synthea_color}"/>',
+        '<text x="251" y="24" font-size="12">Synthea</text>',
+        f'<rect x="330" y="12" width="14" height="14" rx="3" fill="{psynthea_color}"/>',
+        '<text x="351" y="24" font-size="12">Psynthea</text>',
+    ]
+
+    for index, domain in enumerate(domains):
+        y = legend_height + index * row_height
+        synthea_value = float(synthea.get(domain) or 0)
+        psynthea_value = float(psynthea.get(domain) or 0)
+        scale = 520 / maximum
+        parts.extend(
+            [
+                f'<text x="8" y="{y + 18}" font-size="13">'
+                f'{escape(_humanize(domain))}</text>',
+                f'<rect x="230" y="{y}" width="{synthea_value * scale:.1f}" '
+                f'height="15" rx="3" fill="{synthea_color}"/>',
+                f'<rect x="230" y="{y + 19}" width="{psynthea_value * scale:.1f}" '
+                f'height="15" rx="3" fill="{psynthea_color}"/>',
+                f'<text x="{235 + synthea_value * scale:.1f}" y="{y + 12}" '
+                f'font-size="11">{escape(_fmt(synthea.get(domain)))}</text>',
+                f'<text x="{235 + psynthea_value * scale:.1f}" y="{y + 31}" '
+                f'font-size="11">{escape(_fmt(psynthea.get(domain)))}</text>',
+            ]
+        )
+
+    parts.append("</svg>")
+    return '<div class="chart">' + "".join(parts) + "</div>"
 
 
 def _domain_concordance_matrix(
@@ -2284,7 +3105,7 @@ def _statistical_details_html(stats: Mapping[str, Any], item: Mapping[str, Any])
     if stats.get('psynthea_prevalence') is not None: cells.append(f'<div class="stat-item"><span class="label">Psynthea prevalence</span><strong>{escape(_format_percent(stats["psynthea_prevalence"]))}</strong></div>')
     if not cells: return '<details><summary>Evidence provenance</summary><p class="muted">This finding is supported by persisted functional or knowledge-layer evidence; no endpoint-level statistical estimate was extracted.</p></details>'
     note=' JSD ranges from 0 (identical distributions) toward 1 (greater divergence).' if stats.get('jsd') is not None else ''
-    return '<details><summary>Statistical details</summary><div class="stat-list">'+''.join(cells)+'</div><p class="muted">Values are rounded for readability; full precision remains in the source artifacts.'+note+'</p></details>'
+    return '<details><summary>Estadísticoal details</summary><div class="stat-list">'+''.join(cells)+'</div><p class="muted">Values are rounded for readability; full precision remains in the source artifacts.'+note+'</p></details>'
 
 
 def _forest_plot(
@@ -2422,7 +3243,7 @@ def _format_percent(value: Any) -> str:
 
 def _format_percentage_points(value: Any) -> str:
     number=_to_float(value)
-    return 'N/A' if number is None else f'{number*100:+.1f} percentage points'
+    return 'N/A' if number is None else f'{number*100:+.1f} puntos porcentuales'
 
 
 def _qualify_overlap(value: Any) -> str:
@@ -2575,7 +3396,7 @@ def _validation_scope_summary(knowledge: Mapping[str, Any]) -> str:
         "CLINICAL": "Clinical",
         "EPI": "Epidemiological",
         "SPANISH": "Spanish-context",
-        "STAT": "Statistical",
+        "STAT": "Estadísticoal",
         "STRUCT": "Structural",
     }
     if not grouped:

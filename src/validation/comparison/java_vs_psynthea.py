@@ -20,6 +20,7 @@ import pandas as pd
 
 from validation.metrics.cohorts import (
     CohortProfileMetrics,
+    ObservationWindow,
     calculate_cohort_profile,
 )
 from validation.models import ValidationCohort
@@ -80,6 +81,8 @@ class JavaVsPsyntheaComparison:
     demographics: DomainComparison | None
     encounters: DomainComparison | None
     clinical: DomainComparison | None
+    epidemiology: DomainComparison | None
+    disease_epidemiology: CodedEventComparison | None
     medications: DomainComparison | None
     procedures: DomainComparison | None
     observations: DomainComparison | None
@@ -569,6 +572,188 @@ def _compare_clinical(
     )
 
 
+
+def _compare_epidemiology(
+    synthea_profile: CohortProfileMetrics,
+    psynthea_profile: CohortProfileMetrics,
+) -> DomainComparison | None:
+    """Compare observation-window epidemiology at cohort level."""
+
+    synthea_clinical = synthea_profile.clinical
+    psynthea_clinical = psynthea_profile.clinical
+
+    if synthea_clinical is None or psynthea_clinical is None:
+        return None
+
+    synthea = synthea_clinical.epidemiology
+    psynthea = psynthea_clinical.epidemiology
+
+    if synthea is None and psynthea is None:
+        return None
+
+    if synthea is None or psynthea is None:
+        raise ValueError(
+            "Observation-window epidemiology must be available for both "
+            "simulators or for neither simulator."
+        )
+
+    if (
+        synthea.observation_start != psynthea.observation_start
+        or synthea.observation_end != psynthea.observation_end
+    ):
+        raise ValueError(
+            "Synthea and psynthea epidemiology were calculated using "
+            "different observation windows."
+        )
+
+    return _domain_comparison(
+        "epidemiology",
+        [
+            (
+                "eligible_patients",
+                synthea.eligible_patients,
+                psynthea.eligible_patients,
+            ),
+            (
+                "prevalent_patients",
+                synthea.prevalent_patients,
+                psynthea.prevalent_patients,
+            ),
+            (
+                "incident_patients",
+                synthea.incident_patients,
+                psynthea.incident_patients,
+            ),
+        ],
+    )
+
+
+def _disease_epidemiology_frame(profile: CohortProfileMetrics) -> pd.DataFrame:
+    """Return disease epidemiology with one deterministic row per code."""
+
+    clinical = profile.clinical
+    epidemiology = clinical.epidemiology if clinical is not None else None
+
+    columns = [
+        "CODE",
+        "DESCRIPTION",
+        "eligible_patients",
+        "prevalent_patients",
+        "incident_patients",
+        "at_risk_patients",
+        "period_prevalence",
+        "cumulative_incidence",
+        "mean_incident_onset_age",
+        "median_incident_onset_age",
+        "min_incident_onset_age",
+        "max_incident_onset_age",
+    ]
+
+    if epidemiology is None:
+        return pd.DataFrame(columns=columns)
+
+    rows = [
+        {
+            "CODE": disease.code,
+            "DESCRIPTION": disease.display,
+            "eligible_patients": disease.eligible_patients,
+            "prevalent_patients": disease.prevalent_patients,
+            "incident_patients": disease.incident_patients,
+            "at_risk_patients": disease.at_risk_patients,
+            "period_prevalence": disease.period_prevalence,
+            "cumulative_incidence": disease.cumulative_incidence,
+            "mean_incident_onset_age": disease.mean_incident_onset_age,
+            "median_incident_onset_age": disease.median_incident_onset_age,
+            "min_incident_onset_age": disease.min_incident_onset_age,
+            "max_incident_onset_age": disease.max_incident_onset_age,
+        }
+        for disease in epidemiology.diseases
+    ]
+
+    return (
+        pd.DataFrame(rows, columns=columns)
+        .sort_values("CODE", kind="stable")
+        .reset_index(drop=True)
+    )
+
+
+def _compare_disease_epidemiology(
+    synthea_profile: CohortProfileMetrics,
+    psynthea_profile: CohortProfileMetrics,
+) -> CodedEventComparison | None:
+    """Compare disease-specific denominators and epidemiological rates."""
+
+    synthea = _disease_epidemiology_frame(synthea_profile)
+    psynthea = _disease_epidemiology_frame(psynthea_profile)
+
+    synthea_available = (
+        synthea_profile.clinical is not None
+        and synthea_profile.clinical.epidemiology is not None
+    )
+    psynthea_available = (
+        psynthea_profile.clinical is not None
+        and psynthea_profile.clinical.epidemiology is not None
+    )
+
+    if not synthea_available and not psynthea_available:
+        return None
+
+    if synthea_available != psynthea_available:
+        raise ValueError(
+            "Disease epidemiology must be available for both simulators or "
+            "for neither simulator."
+        )
+
+    value_columns = [
+        "eligible_patients",
+        "prevalent_patients",
+        "incident_patients",
+        "at_risk_patients",
+        "period_prevalence",
+        "cumulative_incidence",
+        "mean_incident_onset_age",
+        "median_incident_onset_age",
+        "min_incident_onset_age",
+        "max_incident_onset_age",
+    ]
+
+    merged = synthea.merge(
+        psynthea,
+        on="CODE",
+        how="outer",
+        suffixes=("_synthea", "_psynthea"),
+    )
+
+    synthea_display = merged.get("DESCRIPTION_synthea")
+    psynthea_display = merged.get("DESCRIPTION_psynthea")
+    merged["DESCRIPTION"] = synthea_display.combine_first(psynthea_display)
+
+    output = merged[["CODE", "DESCRIPTION"]].copy()
+    for metric in value_columns:
+        synthea_column = f"{metric}_synthea"
+        psynthea_column = f"{metric}_psynthea"
+        output[synthea_column] = merged.get(synthea_column)
+        output[psynthea_column] = merged.get(psynthea_column)
+        output[f"{metric}_absolute_difference"] = (
+            output[psynthea_column] - output[synthea_column]
+        )
+        output[f"{metric}_relative_difference"] = output.apply(
+            lambda row: _relative_difference(
+                row[synthea_column],
+                row[psynthea_column],
+            ),
+            axis=1,
+        )
+
+    output = output.sort_values("CODE", kind="stable").reset_index(drop=True)
+
+    return CodedEventComparison(
+        domain="disease_epidemiology",
+        code_column="CODE",
+        display_column="DESCRIPTION",
+        metrics=output,
+    )
+
 def _compare_medications(
     synthea_profile: CohortProfileMetrics,
     psynthea_profile: CohortProfileMetrics,
@@ -771,6 +956,7 @@ def compare_java_vs_psynthea(
     reference_date: pd.Timestamp,
     top_n: int = 20,
     include_quality: bool = True,
+    observation_window: ObservationWindow | None = None,
 ) -> JavaVsPsyntheaComparison:
     """
     Compare Synthea Java and psynthea cohorts descriptively.
@@ -794,6 +980,10 @@ def compare_java_vs_psynthea(
         Whether structural/data-quality metrics should be included in the
         cohort profiles when available.
 
+    observation_window
+        Optional closed observation window applied identically to both
+        simulators for epidemiological condition metrics.
+
     Returns
     -------
     JavaVsPsyntheaComparison
@@ -804,6 +994,7 @@ def compare_java_vs_psynthea(
         reference_date,
         top_n=top_n,
         include_quality=include_quality,
+        observation_window=observation_window,
     )
 
     psynthea_profile = calculate_cohort_profile(
@@ -811,6 +1002,7 @@ def compare_java_vs_psynthea(
         reference_date,
         top_n=top_n,
         include_quality=include_quality,
+        observation_window=observation_window,
     )
 
     table_counts = _compare_table_counts(
@@ -826,6 +1018,14 @@ def compare_java_vs_psynthea(
         psynthea_profile,
     )
     clinical = _compare_clinical(
+        synthea_profile,
+        psynthea_profile,
+    )
+    epidemiology = _compare_epidemiology(
+        synthea_profile,
+        psynthea_profile,
+    )
+    disease_epidemiology = _compare_disease_epidemiology(
         synthea_profile,
         psynthea_profile,
     )
@@ -911,6 +1111,7 @@ def compare_java_vs_psynthea(
         demographics,
         encounters,
         clinical,
+        epidemiology,
         medications,
         procedures,
         observations,
@@ -923,6 +1124,8 @@ def compare_java_vs_psynthea(
         demographics=demographics,
         encounters=encounters,
         clinical=clinical,
+        epidemiology=epidemiology,
+        disease_epidemiology=disease_epidemiology,
         medications=medications,
         procedures=procedures,
         observations=observations,

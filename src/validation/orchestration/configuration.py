@@ -65,6 +65,8 @@ _COHORT_FIELDS: Final = frozenset(
         "max_age",
         "step_days",
         "years_of_history",
+        "observation_start_date",
+        "observation_end_date",
         "wellness_encounters",
         "vitals",
         "mortality",
@@ -151,6 +153,8 @@ def apply_experiment_overrides(
     max_age: int | None = None,
     step_days: int | None = None,
     years_of_history: int | None = None,
+    observation_start_date: date | None = None,
+    observation_end_date: date | None = None,
     wellness_encounters: bool | None = None,
     vitals: bool | None = None,
     mortality: bool | None = None,
@@ -189,6 +193,16 @@ def apply_experiment_overrides(
     _set_if_not_none(cohort_changes, "max_age", max_age)
     _set_if_not_none(cohort_changes, "step_days", step_days)
     _set_if_not_none(cohort_changes, "years_of_history", years_of_history)
+    _set_if_not_none(
+        cohort_changes,
+        "observation_start_date",
+        observation_start_date,
+    )
+    _set_if_not_none(
+        cohort_changes,
+        "observation_end_date",
+        observation_end_date,
+    )
     _set_if_not_none(
         cohort_changes,
         "wellness_encounters",
@@ -421,6 +435,16 @@ def experiment_config_to_dict(
             "max_age": config.cohort.max_age,
             "step_days": config.cohort.step_days,
             "years_of_history": config.cohort.years_of_history,
+            "observation_start_date": (
+                config.cohort.observation_start_date.isoformat()
+                if config.cohort.observation_start_date is not None
+                else None
+            ),
+            "observation_end_date": (
+                config.cohort.observation_end_date.isoformat()
+                if config.cohort.observation_end_date is not None
+                else None
+            ),
             "wellness_encounters": config.cohort.wellness_encounters,
             "vitals": config.cohort.vitals,
             "mortality": config.cohort.mortality,
@@ -519,20 +543,18 @@ def _parse_cohort(
         "configuration.cohort",
     )
 
-    reference_date = cohort.get("reference_date")
-    if reference_date is not None:
-        if not isinstance(reference_date, str):
-            raise ExperimentConfigurationError(
-                "configuration.cohort.reference_date must be an "
-                "ISO-8601 date string or null."
-            )
-        try:
-            reference_date = date.fromisoformat(reference_date)
-        except ValueError as exc:
-            raise ExperimentConfigurationError(
-                "configuration.cohort.reference_date must be a valid "
-                "ISO-8601 date."
-            ) from exc
+    reference_date = _optional_iso_date(
+        cohort.get("reference_date"),
+        field_name="configuration.cohort.reference_date",
+    )
+    observation_start_date = _optional_iso_date(
+        cohort.get("observation_start_date"),
+        field_name="configuration.cohort.observation_start_date",
+    )
+    observation_end_date = _optional_iso_date(
+        cohort.get("observation_end_date"),
+        field_name="configuration.cohort.observation_end_date",
+    )
 
     module_selection = _enum(
         cohort.get(
@@ -611,6 +633,8 @@ def _parse_cohort(
             modules_dir=modules_dir,
             step_days=cohort.get("step_days"),
             years_of_history=cohort.get("years_of_history"),
+            observation_start_date=observation_start_date,
+            observation_end_date=observation_end_date,
             wellness_encounters=cohort.get(
                 "wellness_encounters",
                 False,
@@ -625,6 +649,32 @@ def _parse_cohort(
     except (TypeError, ValueError) as exc:
         raise ExperimentConfigurationError(
             f"Invalid configuration.cohort: {exc}"
+        ) from exc
+
+
+def _optional_iso_date(
+    value: Any,
+    *,
+    field_name: str,
+) -> date | None:
+    """Parse one optional strict ISO-8601 calendar date.
+
+    JSON timestamps and Python ``datetime`` values are deliberately rejected:
+    experiment configuration files must declare calendar dates without an
+    implicit timezone or time-of-day convention.
+    """
+
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ExperimentConfigurationError(
+            f"{field_name} must be an ISO-8601 date string or null."
+        )
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ExperimentConfigurationError(
+            f"{field_name} must be a valid ISO-8601 date."
         ) from exc
 
 

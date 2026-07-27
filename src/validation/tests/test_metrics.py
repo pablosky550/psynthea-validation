@@ -519,3 +519,101 @@ def test_calculate_cohort_profile_empty_optional_tables(
     assert isinstance(profile.procedures, ProcedureProfileMetrics)
     assert isinstance(profile.observations, ObservationProfileMetrics)
     assert isinstance(profile.quality, DataQualityMetrics)
+
+# =============================================================================
+# Cohort profile compatibility
+# =============================================================================
+
+def test_calculate_cohort_profile_preserves_descriptive_metric_contract(
+    validation_cohort: ValidationCohort,
+    reference_date: pd.Timestamp,
+) -> None:
+    """
+    Temporal cohort support must not alter the existing descriptive profile.
+    """
+
+    profile = calculate_cohort_profile(
+        validation_cohort,
+        reference_date,
+    )
+
+    assert isinstance(profile, CohortProfileMetrics)
+    assert profile.source == validation_cohort.source
+    assert profile.reference_date == reference_date
+
+    assert profile.table_counts.patients == 4
+    assert profile.table_counts.encounters == 6
+    assert profile.table_counts.conditions == 4
+    assert profile.table_counts.medications == 5
+    assert profile.table_counts.procedures == 5
+    assert profile.table_counts.observations == 8
+
+    assert profile.completeness.available_tables == 6
+    assert profile.completeness.missing_tables == 0
+    assert profile.completeness.missing_table_names == []
+
+    assert isinstance(profile.demographics, DemographicMetrics)
+    assert isinstance(profile.encounters, EncounterMetrics)
+    assert isinstance(profile.clinical, ClinicalMetrics)
+    assert isinstance(profile.medications, MedicationProfileMetrics)
+    assert isinstance(profile.procedures, ProcedureProfileMetrics)
+    assert isinstance(profile.observations, ObservationProfileMetrics)
+    assert isinstance(profile.quality, DataQualityMetrics)
+
+    assert profile.summary["metric"].tolist() == [
+        "source",
+        "patients",
+        "encounters",
+        "conditions",
+        "medications",
+        "procedures",
+        "observations",
+        "available_tables",
+        "missing_tables",
+    ]
+
+
+def test_calculate_cohort_profile_reports_empty_optional_tables_without_failure(
+    empty_optional_tables_cohort: ValidationCohort,
+    reference_date: pd.Timestamp,
+) -> None:
+    """
+    Empty optional tables remain explicit in completeness and domain metrics.
+    """
+
+    profile = calculate_cohort_profile(
+        empty_optional_tables_cohort,
+        reference_date,
+    )
+
+    assert isinstance(profile, CohortProfileMetrics)
+
+    assert profile.table_counts.patients == 4
+    assert profile.table_counts.encounters == 0
+    assert profile.table_counts.conditions == 0
+    assert profile.table_counts.medications == 0
+    assert profile.table_counts.procedures == 0
+    assert profile.table_counts.observations == 0
+
+    assert profile.completeness.available_tables == 1
+    assert profile.completeness.missing_tables == 5
+    assert profile.completeness.missing_table_names == [
+        "encounters",
+        "conditions",
+        "medications",
+        "procedures",
+        "observations",
+    ]
+
+    assert profile.clinical is not None
+    assert profile.clinical.n_conditions == 0
+    assert profile.clinical.healthy_patients == 4
+
+    assert profile.medications is not None
+    assert profile.medications.n_medication_orders == 0
+
+    assert profile.procedures is not None
+    assert profile.procedures.n_procedures == 0
+
+    assert profile.observations is not None
+    assert profile.observations.n_observations == 0

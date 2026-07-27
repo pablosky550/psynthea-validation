@@ -4,7 +4,7 @@
   "name": "Hypertension equivalence: Synthea vs psynthea",
   "description": "Deterministic end-to-end scientific validation of the hypertension module.",
   "cohort": {
-  "population": 100,
+    "population": 100,
     "seed": 42,
     "modules_dir": "../resources/synthea/modules",
     "modules": [
@@ -26,7 +26,9 @@
     "mortality": true,
     "keystone": true,
     "ground_truth": false,
-    "output_format": "csv"
+    "output_format": "csv",
+    "observation_start_date": "2020-01-01",
+    "observation_end_date": "2024-12-31"
   },
   "simulators": [
     {
@@ -93,6 +95,14 @@
       "fdr_method": "benjamini-hochberg",
       "continuous_effect_margin": 0.2,
       "categorical_effect_margin": 0.1
+    },
+    "analysis_window": {
+      "design": "five-year closed observation window with prior history available for baseline disease ascertainment",
+      "start_date": "2020-01-01",
+      "end_date": "2024-12-31",
+      "boundary_convention": "inclusive",
+      "lookback_available_years": 5,
+      "rationale": "The ten-year generated history is partitioned into an approximately five-year pre-observation lookback period and a five-year analysis window. The lookback supports identification of conditions documented before cohort entry, while the analysis window supports period prevalence and cumulative incidence estimates without inferring dates from years_of_history."
     }
   }
 }

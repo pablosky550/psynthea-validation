@@ -15,11 +15,15 @@ be implemented in this module.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from validation.models import ValidationCohort
 from validation.utils import prepare_patients
+
+if TYPE_CHECKING:
+    from validation.metrics.cohorts import ObservationWindow
 
 from validation.constants import (
     PATIENT_ID_COLUMN,
@@ -92,6 +96,41 @@ class DiseaseMetrics:
 
 
 @dataclass(slots=True)
+class DiseaseEpidemiologyMetrics:
+    """Observation-window epidemiology for one clinical condition."""
+
+    code: str
+    display: str
+
+    eligible_patients: int
+    prevalent_patients: int
+    incident_patients: int
+    at_risk_patients: int
+
+    period_prevalence: float
+    cumulative_incidence: float
+
+    mean_incident_onset_age: float
+    median_incident_onset_age: float
+    min_incident_onset_age: float
+    max_incident_onset_age: float
+
+
+@dataclass(slots=True)
+class ClinicalEpidemiologyMetrics:
+    """Condition epidemiology for a closed observation window."""
+
+    observation_start: pd.Timestamp
+    observation_end: pd.Timestamp
+
+    eligible_patients: int
+    prevalent_patients: int
+    incident_patients: int
+
+    diseases: list[DiseaseEpidemiologyMetrics]
+
+
+@dataclass(slots=True)
 class ClinicalMetrics:
     """
     Clinical profile of an entire synthetic cohort.
@@ -125,6 +164,8 @@ class ClinicalMetrics:
     # -------------------------------------------------------------------------
 
     diseases: list[DiseaseMetrics]
+
+    epidemiology: ClinicalEpidemiologyMetrics | None = None
 
 # =============================================================================
 # Helpers
@@ -183,6 +224,231 @@ def _empty_clinical_metrics(
     )
 
 
+def _first_display_value(
+    conditions: pd.DataFrame,
+    code: Any,
+) -> str:
+    """Return the first non-null display label for a condition code."""
+
+    if CONDITION_DESCRIPTION_COLUMN not in conditions.columns:
+        return str(code)
+
+    display_values = conditions[CONDITION_DESCRIPTION_COLUMN].dropna()
+
+    if display_values.empty:
+        return str(code)
+
+    return str(display_values.iloc[0])
+
+
+def _normalise_condition_dates(
+    conditions: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return a copy with canonical condition timestamps normalised."""
+
+    normalised = conditions.copy()
+
+    for column in (
+        CONDITION_START_COLUMN,
+        CONDITION_STOP_COLUMN,
+    ):
+        normalised[column] = pd.to_datetime(
+            normalised[column],
+            errors="coerce",
+            utc=True,
+        ).dt.tz_convert(None)
+
+    return normalised
+
+
+def _incident_onset_age(
+    incident_conditions: pd.DataFrame,
+    patients: pd.DataFrame,
+) -> pd.Series:
+    """Calculate age at first incident onset for each patient."""
+
+    if incident_conditions.empty:
+        return pd.Series(dtype="float64")
+
+    first_onsets = (
+        incident_conditions
+        .dropna(
+            subset=[
+                CONDITION_PATIENT_COLUMN,
+                CONDITION_START_COLUMN,
+            ]
+        )
+        .groupby(CONDITION_PATIENT_COLUMN, as_index=False)
+        [CONDITION_START_COLUMN]
+        .min()
+    )
+
+    patient_birthdates = patients[
+        [
+            PATIENT_ID_COLUMN,
+            PATIENT_BIRTHDATE_COLUMN,
+        ]
+    ].copy()
+    patient_birthdates[PATIENT_BIRTHDATE_COLUMN] = pd.to_datetime(
+        patient_birthdates[PATIENT_BIRTHDATE_COLUMN],
+        errors="coerce",
+        utc=True,
+    ).dt.tz_convert(None)
+
+    first_onsets = first_onsets.merge(
+        patient_birthdates,
+        left_on=CONDITION_PATIENT_COLUMN,
+        right_on=PATIENT_ID_COLUMN,
+        how="left",
+    )
+
+    onset_age = (
+        first_onsets[CONDITION_START_COLUMN]
+        .sub(first_onsets[PATIENT_BIRTHDATE_COLUMN])
+        .dt.days
+        .div(365.25)
+    )
+
+    return onset_age.where(onset_age.ge(0))
+
+
+def calculate_clinical_epidemiology(
+    cohort: ValidationCohort,
+    observation_window: "ObservationWindow",
+) -> ClinicalEpidemiologyMetrics:
+    """
+    Compute condition epidemiology for one explicit observation window.
+
+    Temporal membership and disease-specific populations at risk are delegated
+    to ``validation.metrics.cohorts``. This function only converts those
+    selections into epidemiological measures.
+    """
+
+    from validation.metrics.cohorts import build_temporal_condition_cohorts
+
+    temporal = build_temporal_condition_cohorts(
+        cohort,
+        observation_window,
+    )
+
+    conditions = cohort.conditions
+
+    if conditions is None or conditions.empty:
+        return ClinicalEpidemiologyMetrics(
+            observation_start=observation_window.start,
+            observation_end=observation_window.end,
+            eligible_patients=temporal.n_eligible_patients,
+            prevalent_patients=0,
+            incident_patients=0,
+            diseases=[],
+        )
+
+    patients = cohort.patients
+    if patients is None:
+        patients = pd.DataFrame(
+            columns=[
+                PATIENT_ID_COLUMN,
+                PATIENT_BIRTHDATE_COLUMN,
+            ]
+        )
+
+    prevalent_conditions = _normalise_condition_dates(
+        temporal.prevalent_conditions
+    )
+    incident_conditions = _normalise_condition_dates(
+        temporal.incident_conditions
+    )
+
+    observed_codes = sorted(
+        {
+            str(code)
+            for code in conditions[CONDITION_CODE_COLUMN].dropna().tolist()
+        }
+    )
+
+    diseases: list[DiseaseEpidemiologyMetrics] = []
+    incident_patient_ids_across_diseases: set[Any] = set()
+
+    for code in observed_codes:
+        all_disease_conditions = conditions.loc[
+            conditions[CONDITION_CODE_COLUMN].astype("string").eq(code)
+        ]
+        prevalent_disease_conditions = prevalent_conditions.loc[
+            prevalent_conditions[CONDITION_CODE_COLUMN]
+            .astype("string")
+            .eq(code)
+        ]
+        incident_disease_conditions = incident_conditions.loc[
+            incident_conditions[CONDITION_CODE_COLUMN]
+            .astype("string")
+            .eq(code)
+        ]
+
+        at_risk_patient_ids = temporal.at_risk_patient_ids_by_condition.get(
+            code,
+            frozenset(),
+        )
+        prevalent_patient_ids = frozenset(
+            prevalent_disease_conditions[CONDITION_PATIENT_COLUMN]
+            .dropna()
+            .tolist()
+        )
+        raw_incident_patient_ids = frozenset(
+            incident_disease_conditions[CONDITION_PATIENT_COLUMN]
+            .dropna()
+            .tolist()
+        )
+        incident_patient_ids = raw_incident_patient_ids.intersection(
+            at_risk_patient_ids
+        )
+        incident_patient_ids_across_diseases.update(incident_patient_ids)
+
+        incident_at_risk_conditions = incident_disease_conditions.loc[
+            incident_disease_conditions[CONDITION_PATIENT_COLUMN].isin(
+                incident_patient_ids
+            )
+        ]
+        onset_age = _incident_onset_age(
+            incident_at_risk_conditions,
+            patients,
+        )
+
+        diseases.append(
+            DiseaseEpidemiologyMetrics(
+                code=code,
+                display=_first_display_value(
+                    all_disease_conditions,
+                    code,
+                ),
+                eligible_patients=temporal.n_eligible_patients,
+                prevalent_patients=len(prevalent_patient_ids),
+                incident_patients=len(incident_patient_ids),
+                at_risk_patients=len(at_risk_patient_ids),
+                period_prevalence=_safe_fraction(
+                    len(prevalent_patient_ids),
+                    temporal.n_eligible_patients,
+                ),
+                cumulative_incidence=_safe_fraction(
+                    len(incident_patient_ids),
+                    len(at_risk_patient_ids),
+                ),
+                mean_incident_onset_age=onset_age.mean(),
+                median_incident_onset_age=onset_age.median(),
+                min_incident_onset_age=onset_age.min(),
+                max_incident_onset_age=onset_age.max(),
+            )
+        )
+
+    return ClinicalEpidemiologyMetrics(
+        observation_start=observation_window.start,
+        observation_end=observation_window.end,
+        eligible_patients=temporal.n_eligible_patients,
+        prevalent_patients=temporal.n_prevalent_patients,
+        incident_patients=len(incident_patient_ids_across_diseases),
+        diseases=diseases,
+    )
+
+
 # =============================================================================
 # Public API
 # =============================================================================
@@ -191,6 +457,8 @@ def calculate_clinical(
     cohort: ValidationCohort,
     reference_date: pd.Timestamp,
     top_n: int = 20,
+    *,
+    observation_window: "ObservationWindow | None" = None,
 ) -> ClinicalMetrics:
     """
     Compute descriptive clinical condition metrics.
@@ -206,13 +474,25 @@ def calculate_clinical(
     top_n
         Number of most frequent conditions returned in top_conditions.
 
+    observation_window
+        Optional closed interval used to calculate explicit epidemiological
+        metrics. Descriptive metrics remain based on the full condition table.
+
     Returns
     -------
     ClinicalMetrics
     """
 
     if cohort.conditions is None or cohort.conditions.empty:
-        return _empty_clinical_metrics(cohort)
+        metrics = _empty_clinical_metrics(cohort)
+
+        if observation_window is not None:
+            metrics.epidemiology = calculate_clinical_epidemiology(
+                cohort,
+                observation_window,
+            )
+
+        return metrics
 
     patients = prepare_patients(
         cohort.patients,
@@ -420,6 +700,19 @@ def calculate_clinical(
         )
 
     # -------------------------------------------------------------------------
+    # Optional observation-window epidemiology
+    # -------------------------------------------------------------------------
+
+    epidemiology = (
+        calculate_clinical_epidemiology(
+            cohort,
+            observation_window,
+        )
+        if observation_window is not None
+        else None
+    )
+
+    # -------------------------------------------------------------------------
     # Output
     # -------------------------------------------------------------------------
 
@@ -441,4 +734,5 @@ def calculate_clinical(
         top_conditions=top_conditions,
 
         diseases=diseases,
+        epidemiology=epidemiology,
     )

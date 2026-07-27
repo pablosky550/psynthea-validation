@@ -21,16 +21,21 @@ enrichment, root-cause attribution or final report rendering.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass, field, is_dataclass, fields
+from datetime import UTC, date, datetime
 from hashlib import sha256
 import json
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
+import math
 
 import pandas as pd
 
+from validation.comparison.java_vs_psynthea import (
+    JavaVsPsyntheaComparison,
+    compare_java_vs_psynthea,
+)
 from validation.comparison.statistical_comparison import (
     ModuleStatisticalComparisonResult,
     compare_module_statistics,
@@ -41,6 +46,7 @@ from validation.constants import (
     SOURCE_PSYNTHEA,
     SOURCE_SYNTHEA,
 )
+from validation.metrics.cohorts import ObservationWindow
 from validation.models import ValidationCohort
 from validation.orchestration.models import (
     ArtifactKind,
@@ -130,10 +136,8 @@ _EXPECTED_SOURCE: Final[
     }
 )
 
-ModuleComparator = Callable[
-    ...,
-    ModuleStatisticalComparisonResult,
-]
+ModuleComparator = Callable[..., ModuleStatisticalComparisonResult]
+CohortComparator = Callable[..., JavaVsPsyntheaComparison]
 
 
 class ValidationStageError(RuntimeError):
@@ -145,6 +149,7 @@ class ValidationStageHandler:
     """Execute the real validation engine over normalized cohorts."""
 
     comparator: ModuleComparator = compare_module_statistics
+    cohort_comparator: CohortComparator = compare_java_vs_psynthea
     clock: Callable[[], datetime] = lambda: datetime.now(UTC)
 
     stage: ExperimentStage = field(
@@ -155,6 +160,9 @@ class ValidationStageHandler:
     def __post_init__(self) -> None:
         if not callable(self.comparator):
             raise TypeError("comparator must be callable.")
+
+        if not callable(self.cohort_comparator):
+            raise TypeError("cohort_comparator must be callable.")
 
         if not callable(self.clock):
             raise TypeError("clock must be callable.")
@@ -204,6 +212,41 @@ class ValidationStageHandler:
 
         settings = _validation_settings(
             context.config.metadata
+        )
+
+        reference_date = context.config.cohort.reference_date
+        if reference_date is None:
+            raise ValidationStageError(
+                "Validation requires cohort.reference_date to compute "
+                "age-dependent demographic and clinical metrics."
+            )
+
+        observation_window = _observation_window(context)
+
+        try:
+            cohort_comparison = self.cohort_comparator(
+                synthea_cohort=cohorts[SimulatorKind.SYNTHEA],
+                psynthea_cohort=cohorts[SimulatorKind.PSYNTHEA],
+                reference_date=pd.Timestamp(reference_date),
+                top_n=settings["top_n_codes"],
+                observation_window=observation_window,
+            )
+        except Exception as exc:
+            raise ValidationStageError(
+                f"Cohort-level comparison failed: {exc}"
+            ) from exc
+
+        if not isinstance(cohort_comparison, JavaVsPsyntheaComparison):
+            raise ValidationStageError(
+                "Cohort comparator returned "
+                f"{type(cohort_comparison).__name__}; expected "
+                "JavaVsPsyntheaComparison."
+            )
+
+        cohort_comparison_payload = _cohort_comparison_payload(
+            cohort_comparison,
+            min_age=context.config.cohort.min_age,
+            max_age=context.config.cohort.max_age,
         )
 
         module_results: list[
@@ -347,6 +390,17 @@ class ValidationStageHandler:
                 "modules": list(
                     configured_module_names
                 ),
+                "reference_date": reference_date.isoformat(),
+                "observation_start_date": (
+                    context.config.cohort.observation_start_date.isoformat()
+                    if context.config.cohort.observation_start_date is not None
+                    else None
+                ),
+                "observation_end_date": (
+                    context.config.cohort.observation_end_date.isoformat()
+                    if context.config.cohort.observation_end_date is not None
+                    else None
+                ),
             },
             "cohorts": {
                 simulator.value: {
@@ -372,6 +426,7 @@ class ValidationStageHandler:
                 in cohorts.items()
             },
             "aggregate": aggregate,
+            "cohort_comparison": cohort_comparison_payload,
             "modules": modules_payload,
         }
 
@@ -455,6 +510,230 @@ class ValidationStageHandler:
             },
         )
 
+
+
+def _observation_window(
+    context: OrchestrationContext,
+) -> ObservationWindow | None:
+    start = context.config.cohort.observation_start_date
+    end = context.config.cohort.observation_end_date
+    if start is None and end is None:
+        return None
+    if start is None or end is None:
+        raise ValidationStageError(
+            "Observation-window configuration is incomplete."
+        )
+    return ObservationWindow(
+        start=pd.Timestamp(start),
+        end=pd.Timestamp(end),
+    )
+
+
+def _records(frame: pd.DataFrame | None) -> list[dict[str, Any]]:
+    if frame is None or frame.empty:
+        return []
+    return [
+        {str(key): _json_value(value) for key, value in row.items()}
+        for row in frame.to_dict(orient="records")
+    ]
+
+
+def _json_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (pd.Timestamp, datetime, date)):
+        return value.isoformat()
+    if isinstance(value, pd.DataFrame):
+        return _records(value)
+    if is_dataclass(value):
+        return {field.name: _json_value(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except (ValueError, TypeError):
+            pass
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None
+        return round(value, 12)
+    return value
+
+
+def _adaptive_age_groups(
+    synthea_age_distribution: pd.DataFrame,
+    psynthea_age_distribution: pd.DataFrame,
+    *,
+    synthea_n: int,
+    psynthea_n: int,
+    min_age: int | None,
+    max_age: int | None,
+) -> pd.DataFrame:
+    """Build clinically readable age bands constrained to the configured cohort."""
+    observed = pd.concat(
+        [synthea_age_distribution[["age"]], psynthea_age_distribution[["age"]]],
+        ignore_index=True,
+    )["age"]
+    if observed.empty:
+        return pd.DataFrame(columns=[
+            "age_band", "synthea_count", "psynthea_count",
+            "synthea_fraction", "psynthea_fraction", "difference_pp",
+        ])
+
+    lower = int(min_age if min_age is not None else observed.min())
+    upper = int(max_age if max_age is not None else observed.max())
+    if lower > upper:
+        raise ValidationStageError("Configured minimum age exceeds maximum age.")
+
+    internal_edges = [edge for edge in range(25, 96, 10) if lower < edge <= upper]
+    edges = [lower, *internal_edges, upper + 1]
+    edges = list(dict.fromkeys(edges))
+
+    def aggregate(frame: pd.DataFrame, count_name: str) -> pd.DataFrame:
+        if frame.empty:
+            return pd.DataFrame({"age_band": [], count_name: []})
+        data = frame[["age", "count"]].copy()
+        data["age"] = pd.to_numeric(data["age"], errors="coerce")
+        data["count"] = pd.to_numeric(data["count"], errors="coerce").fillna(0)
+        data = data[data["age"].between(lower, upper, inclusive="both")]
+        labels = [f"{edges[i]}-{edges[i + 1] - 1}" for i in range(len(edges) - 1)]
+        data["age_band"] = pd.cut(
+            data["age"], bins=edges, labels=labels, right=False, include_lowest=True
+        )
+        return (
+            data.groupby("age_band", observed=False)["count"]
+            .sum()
+            .reset_index()
+            .rename(columns={"count": count_name})
+        )
+
+    result = aggregate(synthea_age_distribution, "synthea_count").merge(
+        aggregate(psynthea_age_distribution, "psynthea_count"),
+        on="age_band",
+        how="outer",
+    )
+    result["age_band"] = result["age_band"].astype(str)
+    result["synthea_count"] = result["synthea_count"].fillna(0).astype(int)
+    result["psynthea_count"] = result["psynthea_count"].fillna(0).astype(int)
+    result["synthea_fraction"] = result["synthea_count"] / max(synthea_n, 1)
+    result["psynthea_fraction"] = result["psynthea_count"] / max(psynthea_n, 1)
+    result["difference_pp"] = 100.0 * (
+        result["psynthea_fraction"] - result["synthea_fraction"]
+    )
+    return result
+
+
+def _validate_epidemiology_payload(epidemiology: Mapping[str, Any]) -> None:
+    """Enforce denominator identities before persisting scientific results."""
+    for disease in epidemiology.get("diseases", []):
+        code = disease.get("CODE") or disease.get("code") or "unknown"
+        for engine in ("synthea", "psynthea"):
+            eligible = disease.get(f"eligible_patients_{engine}")
+            prevalent = disease.get(f"prevalent_patients_{engine}")
+            incident = disease.get(f"incident_patients_{engine}")
+            at_risk = disease.get(f"at_risk_patients_{engine}")
+            prevalence = disease.get(f"period_prevalence_{engine}")
+            incidence = disease.get(f"cumulative_incidence_{engine}")
+            counts = (eligible, prevalent, incident, at_risk)
+            if any(value is None for value in counts):
+                continue
+            if not (0 <= prevalent <= eligible and 0 <= incident <= at_risk <= eligible):
+                raise ValidationStageError(
+                    f"Invalid epidemiological denominators for disease {code} ({engine})."
+                )
+            expected_prevalence = prevalent / eligible if eligible else 0.0
+            expected_incidence = incident / at_risk if at_risk else 0.0
+            if prevalence is not None and not math.isclose(
+                float(prevalence), expected_prevalence, rel_tol=1e-10, abs_tol=1e-12
+            ):
+                raise ValidationStageError(
+                    f"Period-prevalence identity failed for disease {code} ({engine})."
+                )
+            if incidence is not None and not math.isclose(
+                float(incidence), expected_incidence, rel_tol=1e-10, abs_tol=1e-12
+            ):
+                raise ValidationStageError(
+                    f"Cumulative-incidence identity failed for disease {code} ({engine})."
+                )
+
+
+def _demographic_payload(
+    comparison: JavaVsPsyntheaComparison,
+    *,
+    min_age: int | None,
+    max_age: int | None,
+) -> Mapping[str, Any]:
+    s = comparison.synthea_profile.demographics
+    p = comparison.psynthea_profile.demographics
+    if s is None or p is None:
+        return {}
+
+    scalar = {row["metric"]: row for row in _records(comparison.demographics.metrics if comparison.demographics else None)}
+    age_summary = {
+        metric: {
+            "synthea": scalar.get(metric, {}).get("synthea_value"),
+            "psynthea": scalar.get(metric, {}).get("psynthea_value"),
+            "absolute_difference": scalar.get(metric, {}).get("absolute_difference"),
+        }
+        for metric in ("mean_age", "median_age", "std_age", "min_age", "max_age", "p25_age", "p75_age")
+    }
+
+    age_groups = _adaptive_age_groups(
+        s.age_distribution,
+        p.age_distribution,
+        synthea_n=s.n_patients,
+        psynthea_n=p.n_patients,
+        min_age=min_age,
+        max_age=max_age,
+    )
+
+    sex_rows = []
+    for label, sc, pc in (("Male", s.male_count, p.male_count), ("Female", s.female_count, p.female_count)):
+        sf = sc / max(s.n_patients, 1)
+        pf = pc / max(p.n_patients, 1)
+        sex_rows.append({"sex": label, "synthea_count": sc, "psynthea_count": pc, "synthea_fraction": sf, "psynthea_fraction": pf, "difference_pp": 100.0 * (pf - sf)})
+
+    return {
+        "age_summary": age_summary,
+        "age_groups": _records(age_groups),
+        "sex_distribution": sex_rows,
+        "scalar_comparison": _records(comparison.demographics.metrics if comparison.demographics else None),
+    }
+
+
+def _cohort_comparison_payload(
+    comparison: JavaVsPsyntheaComparison,
+    *,
+    min_age: int | None,
+    max_age: int | None,
+) -> Mapping[str, Any]:
+    epidemiology = None
+    if comparison.epidemiology is not None:
+        epidemiology = {
+            "summary": _records(comparison.epidemiology.metrics),
+            "diseases": _records(
+                comparison.disease_epidemiology.metrics
+                if comparison.disease_epidemiology is not None
+                else None
+            ),
+        }
+    if epidemiology is not None:
+        _validate_epidemiology_payload(epidemiology)
+    return _json_value({
+        "demographics": _demographic_payload(
+            comparison, min_age=min_age, max_age=max_age
+        ),
+        "epidemiology": epidemiology,
+        "summary": _records(comparison.summary),
+    })
 
 def _normalization_manifest_artifact(
     artifacts: Sequence[ArtifactReference],

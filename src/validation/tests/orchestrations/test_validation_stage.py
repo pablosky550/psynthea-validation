@@ -441,6 +441,16 @@ def test_stage_executes_real_validation_and_persists_result(
         ["alpha"]
         == 0.05
     )
+    assert result_payload["configuration"]["reference_date"] == "2026-01-01"
+    assert result_payload["configuration"]["observation_start_date"] is None
+    assert result_payload["configuration"]["observation_end_date"] is None
+
+    cohort_comparison = result_payload["cohort_comparison"]
+    assert cohort_comparison["demographics"]["age_summary"]
+    assert cohort_comparison["demographics"]["age_groups"]
+    assert cohort_comparison["demographics"]["sex_distribution"]
+    assert cohort_comparison["epidemiology"] is None
+    assert cohort_comparison["summary"]
 
     assert (
         output.metadata["module_count"]

@@ -506,6 +506,8 @@ class CohortConfig:
 
     step_days: int | None = None
     years_of_history: int | None = None
+    observation_start_date: date | None = None
+    observation_end_date: date | None = None
     wellness_encounters: bool = False
     vitals: bool = False
     mortality: bool = False
@@ -607,6 +609,47 @@ class CohortConfig:
                 self.years_of_history,
                 "years_of_history",
             ),
+        )
+
+        observation_start_date = _normalize_date(
+            self.observation_start_date,
+            "observation_start_date",
+        )
+        observation_end_date = _normalize_date(
+            self.observation_end_date,
+            "observation_end_date",
+        )
+        if (observation_start_date is None) != (observation_end_date is None):
+            raise ValueError(
+                "observation_start_date and observation_end_date must be "
+                "provided together."
+            )
+        if (
+            observation_start_date is not None
+            and observation_end_date is not None
+            and observation_start_date > observation_end_date
+        ):
+            raise ValueError(
+                "observation_start_date must not exceed observation_end_date."
+            )
+        if (
+            observation_end_date is not None
+            and self.reference_date is not None
+            and observation_end_date > self.reference_date
+        ):
+            raise ValueError(
+                "observation_end_date must not exceed reference_date."
+            )
+
+        object.__setattr__(
+            self,
+            "observation_start_date",
+            observation_start_date,
+        )
+        object.__setattr__(
+            self,
+            "observation_end_date",
+            observation_end_date,
         )
 
         for field_name in (
