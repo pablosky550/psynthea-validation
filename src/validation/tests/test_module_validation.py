@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+import validation.comparison.module_validation as module_validation
 from validation.comparison.module_validation import (
     ModuleValidationIssueType,
     ModuleValidationStatus,
@@ -259,3 +260,44 @@ def test_module_validation_reports_code_similarity_metrics() -> None:
 
     assert condition_similarity["jaccard_similarity"] < 1.0
     assert condition_similarity["jensen_shannon_divergence"] >= 0.0
+
+
+def test_jensen_shannon_divergence_clamps_tiny_negative_roundoff(
+    monkeypatch,
+) -> None:
+    """A tiny negative round-off must not abort the validation pipeline."""
+
+    monkeypatch.setattr(
+        module_validation,
+        "_kl_divergence",
+        lambda distribution, reference: -1e-16,
+    )
+
+    result = module_validation._jensen_shannon_divergence(
+        {"A": 50, "B": 50},
+        {"A": 50, "B": 50},
+    )
+
+    assert result == 0.0
+
+
+def test_jensen_shannon_divergence_rejects_materially_negative_value(
+    monkeypatch,
+) -> None:
+    """Materially negative divergence remains a visible invariant failure."""
+
+    monkeypatch.setattr(
+        module_validation,
+        "_kl_divergence",
+        lambda distribution, reference: -1e-4,
+    )
+
+    try:
+        module_validation._jensen_shannon_divergence(
+            {"A": 50, "B": 50},
+            {"A": 50, "B": 50},
+        )
+    except ValueError as error:
+        assert "materially negative" in str(error)
+    else:
+        raise AssertionError("Expected materially negative divergence to fail")

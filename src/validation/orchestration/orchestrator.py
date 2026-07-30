@@ -42,6 +42,8 @@ from time import monotonic
 from types import MappingProxyType
 from typing import Any, Final, Protocol, runtime_checkable
 from uuid import uuid4
+import traceback
+import logging
 
 from validation.orchestration.manifest import (
     ExperimentManifest,
@@ -81,6 +83,7 @@ __all__ = [
     "StageOutput",
 ]
 
+_LOGGER = logging.getLogger(__name__)
 
 _ORCHESTRATOR_PRODUCER: Final[str] = "experiment_orchestrator"
 _DEFAULT_ORCHESTRATOR_VERSION: Final[str] = "1.0.0"
@@ -669,6 +672,21 @@ class ExperimentOrchestrator:
             raise
         except Exception as exc:
             finished_at = self._now()
+
+            traceback_text = "".join(
+                traceback.format_exception(
+                    type(exc),
+                    exc,
+                    exc.__traceback__,
+                )
+            ).rstrip()
+
+            _LOGGER.exception(
+                "Experiment stage %s failed in handler %s",
+                stage.value,
+                type(handler).__qualname__,
+            )
+
             return PipelineStageResult(
                 id=self._stage_id(config.id, run_id, stage),
                 stage=stage,
@@ -680,14 +698,12 @@ class ExperimentOrchestrator:
                     self._monotonic() - started_clock,
                 ),
                 artifacts=(),
-                error_message=(
-                    f"{type(exc).__name__}: {exc}"
-                    if str(exc)
-                    else type(exc).__name__
-                ),
+                error_message=traceback_text,
                 metadata={
                     "handler": type(handler).__qualname__,
                     "exception_type": type(exc).__name__,
+                    "exception_message": str(exc),
+                    "traceback": traceback_text,
                 },
             )
 

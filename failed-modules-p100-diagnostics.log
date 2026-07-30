@@ -1,0 +1,60 @@
+
+================================================================================
+MODULE: breast_cancer
+================================================================================
+COMMAND: /Users/pgt01/miniforge3/bin/python -m validation.cli --config /Users/pgt01/IRYCIS/psynthea-validation/configs/all-compatible-modules-experiment.json --experiment --module breast_cancer --module-name breast_cancer --population 100 --experiment-id all-modules-compatibility-psynthea-compatible-module-breast_cancer-p100
+
+Pipeline error: ValueError: math domain error
+Experiment completed: status=failed, run_id=run-20260729T091610429641Z-9691f47f8585
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility-psynthea-compatible-module-breast_cancer-p100/run-20260729T091610429641Z-9691f47f8585
+Manifest: manifest.json
+
+================================================================================
+MODULE: colorectal_cancer
+================================================================================
+COMMAND: /Users/pgt01/miniforge3/bin/python -m validation.cli --config /Users/pgt01/IRYCIS/psynthea-validation/configs/all-compatible-modules-experiment.json --experiment --module colorectal_cancer --module-name colorectal_cancer --population 100 --experiment-id all-modules-compatibility-psynthea-compatible-module-colorectal_cancer-p100
+
+Pipeline error: ValueError: math domain error
+Experiment completed: status=failed, run_id=run-20260729T091709403219Z-0d63f7ed838c
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility-psynthea-compatible-module-colorectal_cancer-p100/run-20260729T091709403219Z-0d63f7ed838c
+Manifest: manifest.json
+
+================================================================================
+MODULE: congestive_heart_failure
+================================================================================
+COMMAND: /Users/pgt01/miniforge3/bin/python -m validation.cli --config /Users/pgt01/IRYCIS/psynthea-validation/configs/all-compatible-modules-experiment.json --experiment --module congestive_heart_failure --module-name congestive_heart_failure --population 100 --experiment-id all-modules-compatibility-psynthea-compatible-module-congestive_heart_failure-p100
+
+Pipeline error: ValueError: math domain error
+Experiment completed: status=failed, run_id=run-20260729T091735876326Z-13765c15f51f
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility-psynthea-compatible-module-congestive_heart_failure-p100/run-20260729T091735876326Z-13765c15f51f
+Manifest: manifest.json
+
+================================================================================
+MODULE: epilepsy
+================================================================================
+COMMAND: /Users/pgt01/miniforge3/bin/python -m validation.cli --config /Users/pgt01/IRYCIS/psynthea-validation/configs/all-compatible-modules-experiment.json --experiment --module epilepsy --module-name epilepsy --population 100 --experiment-id all-modules-compatibility-psynthea-compatible-module-epilepsy-p100
+
+Pipeline error: ValueError: math domain error
+Experiment completed: status=failed, run_id=run-20260729T092501614016Z-a16624740ee4
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility-psynthea-compatible-module-epilepsy-p100/run-20260729T092501614016Z-a16624740ee4
+Manifest: manifest.json
+
+================================================================================
+MODULE: injuries
+================================================================================
+COMMAND: /Users/pgt01/miniforge3/bin/python -m validation.cli --config /Users/pgt01/IRYCIS/psynthea-validation/configs/all-compatible-modules-experiment.json --experiment --module injuries --module-name injuries --population 100 --experiment-id all-modules-compatibility-psynthea-compatible-module-injuries-p100
+
+Pipeline error: ValueError: math domain error
+Experiment completed: status=failed, run_id=run-20260729T092753109977Z-169df2a4e87b
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility-psynthea-compatible-module-injuries-p100/run-20260729T092753109977Z-169df2a4e87b
+Manifest: manifest.json
+
+================================================================================
+MODULE: opioid_addiction
+================================================================================
+COMMAND: /Users/pgt01/miniforge3/bin/python -m validation.cli --config /Users/pgt01/IRYCIS/psynthea-validation/configs/all-compatible-modules-experiment.json --experiment --module opioid_addiction --module-name opioid_addiction --population 100 --experiment-id all-modules-compatibility-psynthea-compatible-module-opioid_addiction-p100
+
+Pipeline error: ValueError: math domain error
+Experiment completed: status=failed, run_id=run-20260729T093011314985Z-b25731517701
+Workspace: /Users/pgt01/IRYCIS/psynthea-validation/runs/all-modules-compatibility-psynthea-compatible-module-opioid_addiction-p100/run-20260729T093011314985Z-b25731517701
+Manifest: manifest.json

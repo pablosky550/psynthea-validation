@@ -922,10 +922,28 @@ def _jensen_shannon_divergence(
     q = [right.get(key, 0) / right_total for key in keys]
     m = [(p_i + q_i) / 2 for p_i, q_i in zip(p, q)]
 
-    return sqrt(
+    divergence = (
         0.5 * _kl_divergence(p, m)
         + 0.5 * _kl_divergence(q, m)
     )
+
+    # Jensen-Shannon divergence is mathematically non-negative. Floating-point
+    # cancellation can nevertheless produce a tiny negative value for nearly
+    # identical empirical distributions (for example, -1e-17). Passing that
+    # value directly to math.sqrt raises ``ValueError: math domain error`` and
+    # aborts the complete validation pipeline. Clamp only numerical underflow;
+    # a materially negative value indicates an implementation/data invariant
+    # violation and must not be silently hidden.
+    if divergence < 0.0:
+        if divergence >= -1e-12:
+            divergence = 0.0
+        else:
+            raise ValueError(
+                "Jensen-Shannon divergence became materially negative: "
+                f"{divergence!r}"
+            )
+
+    return sqrt(divergence)
 
 
 def _kl_divergence(

@@ -3108,12 +3108,9 @@ def _statistical_details_html(stats: Mapping[str, Any], item: Mapping[str, Any])
     return '<details><summary>Estadísticoal details</summary><div class="stat-list">'+''.join(cells)+'</div><p class="muted">Values are rounded for readability; full precision remains in the source artifacts.'+note+'</p></details>'
 
 
-
 def _forest_plot(
     discrepancies: Sequence[Mapping[str, Any]],
 ) -> str:
-    import math
-
     points: list[tuple[str, float, float, float]] = []
     seen: set[tuple[str, float, float, float]] = set()
 
@@ -3121,49 +3118,34 @@ def _forest_plot(
         stats = _extract_display_statistics(
             item.get("related_findings") or ()
         )
-        raw_rr = stats.get("risk_ratio")
-        raw_lower = stats.get("ci_lower")
-        raw_upper = stats.get("ci_upper")
-
-        if raw_rr is None or raw_lower is None or raw_upper is None:
-            continue
-
-        try:
-            estimate = float(raw_rr)
-            lower = float(raw_lower)
-            upper = float(raw_upper)
-        except (TypeError, ValueError):
-            continue
-
+        rr = stats.get("risk_ratio")
+        lower = stats.get("ci_lower")
+        upper = stats.get("ci_upper")
         if (
-            not math.isfinite(estimate)
-            or not math.isfinite(lower)
-            or not math.isfinite(upper)
-            or estimate <= 0.0
-            or lower <= 0.0
-            or upper <= 0.0
-            or lower > upper
+            rr is None
+            or lower is None
+            or upper is None
+            or float(lower) <= 0
+            or float(upper) <= 0
         ):
             continue
 
         domain = str(item.get("domain") or item.get("key") or "")
         identity = (
             domain.casefold(),
-            round(estimate, 8),
-            round(lower, 8),
-            round(upper, 8),
+            round(float(rr), 8),
+            round(float(lower), 8),
+            round(float(upper), 8),
         )
-
         if identity in seen:
             continue
-
         seen.add(identity)
         points.append(
             (
                 _publication_finding_title(item),
-                estimate,
-                lower,
-                upper,
+                float(rr),
+                float(lower),
+                float(upper),
             )
         )
 
@@ -3173,54 +3155,53 @@ def _forest_plot(
             'were available for a forest plot.</p>'
         )
 
-    points = points[:8]
+    import math
 
+    points = points[:8]
     max_log = max(
         abs(math.log(value))
         for _, estimate, lower, upper in points
         for value in (lower, upper, estimate)
     )
     max_log = max(max_log, 0.4)
-
     width = 900
     height = 55 + 42 * len(points)
     left = 330
     span = 500
 
     def x_position(value: float) -> float:
-        return (
-            left
-            + (math.log(value) + max_log)
-            / (2 * max_log)
-            * span
-        )
+        return left + (math.log(value) + max_log) / (2 * max_log) * span
 
     output = [
-        f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Risk-ratio forest plot">',
-        f'<line x1="{x_position(1):.1f}" y1="25" x2="{x_position(1):.1f}" y2="{height - 20}" stroke="#777" stroke-dasharray="4 4"/>',
+        f'<svg viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="Risk-ratio forest plot">',
+        f'<line x1="{x_position(1):.1f}" y1="25" '
+        f'x2="{x_position(1):.1f}" y2="{height - 20}" '
+        'stroke="#777" stroke-dasharray="4 4"/>',
     ]
-
     for index, (label, estimate, lower, upper) in enumerate(points):
         y = 45 + index * 42
         short_label = label if len(label) < 42 else label[:39] + "..."
-
         output.extend(
             [
-                f'<text x="5" y="{y + 4}" font-size="12">{escape(short_label)}</text>',
-                f'<line x1="{x_position(lower):.1f}" y1="{y}" x2="{x_position(upper):.1f}" y2="{y}" stroke="#315f88" stroke-width="3"/>',
-                f'<circle cx="{x_position(estimate):.1f}" cy="{y}" r="5" fill="#183b63"/>',
-                f'<text x="840" y="{y + 4}" font-size="11">{estimate:.2f} [{lower:.2f}–{upper:.2f}]</text>',
+                f'<text x="5" y="{y + 4}" font-size="12">'
+                f'{escape(short_label)}</text>',
+                f'<line x1="{x_position(lower):.1f}" y1="{y}" '
+                f'x2="{x_position(upper):.1f}" y2="{y}" '
+                'stroke="#315f88" stroke-width="3"/>',
+                f'<circle cx="{x_position(estimate):.1f}" cy="{y}" '
+                'r="5" fill="#183b63"/>',
+                f'<text x="840" y="{y + 4}" font-size="11">'
+                f'{estimate:.2f} [{lower:.2f}–{upper:.2f}]</text>',
             ]
         )
-
     output.append("</svg>")
-
     return (
-        '<h3>Risk-ratio forest plot</h3>'
-        '<div class="chart">'
+        '<h3>Risk-ratio forest plot</h3><div class="chart">'
         + "".join(output)
-        + "</div>"
+        + '</div>'
     )
+
 
 def _discussion_summary(decision: str, discrepancies: Sequence[Mapping[str, Any]], knowledge: Mapping[str, Any]) -> str:
     leading=', '.join(str(x.get('short_label')) for x in discrepancies[:3] if x.get('short_label')) or 'no material discrepancy'

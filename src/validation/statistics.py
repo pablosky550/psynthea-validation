@@ -852,7 +852,13 @@ def confidence_interval_risk_ratio(
     Return a log-scale confidence interval for the risk ratio.
     """
 
-    if synthea_total <= 0 or psynthea_total <= 0:
+    if not (
+        _validate_binary_counts(synthea_events, synthea_total)
+        and _validate_binary_counts(psynthea_events, psynthea_total)
+    ):
+        return ConfidenceInterval(None, None, confidence_level)
+
+    if synthea_total == 0 or psynthea_total == 0:
         return ConfidenceInterval(None, None, confidence_level)
 
     a = float(psynthea_events)
@@ -874,12 +880,17 @@ def confidence_interval_risk_ratio(
     if rr is None or rr <= 0:
         return ConfidenceInterval(None, None, confidence_level)
 
-    standard_error = sqrt(
+    variance = (
         (1.0 / a)
         - (1.0 / n1)
         + (1.0 / c)
         - (1.0 / n0)
     )
+
+    # With coherent binary counts the log-risk-ratio variance is
+    # mathematically non-negative. Clamp only floating-point underflow so a
+    # value such as -1e-16 cannot abort the complete validation pipeline.
+    standard_error = sqrt(max(0.0, variance))
     margin = _z_value(confidence_level) * standard_error
 
     return ConfidenceInterval(

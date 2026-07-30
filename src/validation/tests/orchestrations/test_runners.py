@@ -548,3 +548,32 @@ def test_command_plan_rejects_expected_file_outside_output_directory(tmp_path: P
             expected_output_files=((tmp_path / "elsewhere.csv").resolve(),),
             discover_outputs=False,
         )
+
+def test_synthea_template_can_render_reference_and_end_dates(
+    tmp_path: Path,
+) -> None:
+    custom = {
+        "command_arguments": (
+            "--args=-p {population} "
+            "-r {reference_date_compact} "
+            "-e {reference_date_compact} "
+            "--exporter.baseDirectory={output_dir}",
+        ),
+    }
+
+    synthea = _simulator_config(
+        SimulatorKind.SYNTHEA,
+        tmp_path,
+        arguments=custom,
+    )
+    config = _experiment(tmp_path, synthea=synthea)
+
+    plan = SyntheaRunner(synthea).build_plan(
+        experiment=config,
+        workspace=_workspace(config),
+    )
+
+    rendered = " ".join(plan.command)
+
+    assert "-r 20260101" in rendered
+    assert "-e 20260101" in rendered
