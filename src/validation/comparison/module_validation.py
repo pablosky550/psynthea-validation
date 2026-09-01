@@ -111,6 +111,7 @@ _SIGNAL_COLUMNS = [
     "expected_signal_detected_synthea",
     "expected_signal_detected_psynthea",
     "expected_terms",
+    "required",
     "blocking_issue",
 ]
 
@@ -126,6 +127,7 @@ _SIMILARITY_COLUMNS = [
     "overlap_coefficient",
     "jensen_shannon_divergence",
     "valid_for_distributional_comparison",
+    "required",
     "blocking_issue",
 ]
 
@@ -250,6 +252,7 @@ class ModuleClinicalSignal:
     expected_signal_detected_psynthea: bool | None
     expected_terms: str | None
 
+    required: bool
     blocking_issue: bool
 
 
@@ -274,6 +277,7 @@ class ModuleSimilarityResult:
     jensen_shannon_divergence: float | None
 
     valid_for_distributional_comparison: bool
+    required: bool
     blocking_issue: bool
 
 
@@ -304,6 +308,7 @@ def validate_independent_module(
     psynthea_cohort: ValidationCohort,
     *,
     required_tables: Sequence[str] | None = None,
+    required_signal_domains: Sequence[str] | None = None,
     expected_condition_terms: Sequence[str] | None = None,
     expected_medication_terms: Sequence[str] | None = None,
     expected_procedure_terms: Sequence[str] | None = None,
@@ -324,6 +329,9 @@ def validate_independent_module(
         Tables that must exist and be non-empty in both generators for the
         comparison to be considered valid. By default, patients, encounters and
         conditions are required.
+    required_signal_domains:
+        Coded clinical domains that define the module's minimum functional
+        signal. Defaults to conditions for backward compatibility.
     expected_*_terms:
         Optional module-specific expected clinical codes or text fragments.
         Terms are matched against CODE and DESCRIPTION columns when available.
@@ -336,6 +344,7 @@ def validate_independent_module(
     """
 
     required = list(required_tables or _DEFAULT_REQUIRED_TABLES)
+    required_signals = _normalise_required_signal_domains(required_signal_domains)
     expected_terms = {
         "conditions": list(expected_condition_terms or []),
         "medications": list(expected_medication_terms or []),
@@ -354,11 +363,13 @@ def validate_independent_module(
         synthea_cohort,
         psynthea_cohort,
         expected_terms,
+        required_signals,
     )
     distributional_similarity = _distributional_similarity_table(
         module_name,
         synthea_cohort,
         psynthea_cohort,
+        required_signals,
     )
     issues = _issue_table(
         module_name,
@@ -453,6 +464,7 @@ def _clinical_signal_table(
     synthea_cohort: ValidationCohort,
     psynthea_cohort: ValidationCohort,
     expected_terms: Mapping[str, Sequence[str]],
+    required_signal_domains: set[str],
 ) -> pd.DataFrame:
     """
     Build clinical-signal diagnostics for coded clinical domains.
@@ -465,6 +477,7 @@ def _clinical_signal_table(
             _get_table(synthea_cohort, domain),
             _get_table(psynthea_cohort, domain),
             expected_terms.get(domain, []),
+            domain in required_signal_domains,
         )
         for domain in _DEFAULT_SIGNAL_TABLES
     ]
@@ -477,6 +490,7 @@ def _clinical_signal(
     synthea_table: pd.DataFrame | None,
     psynthea_table: pd.DataFrame | None,
     expected_terms: Sequence[str],
+    required: bool,
 ) -> ModuleClinicalSignal:
     """
     Detect whether one coded clinical domain contains comparable signal.
@@ -508,7 +522,8 @@ def _clinical_signal(
         expected_signal_detected_synthea=expected_synthea,
         expected_signal_detected_psynthea=expected_psynthea,
         expected_terms=", ".join(expected_terms) if expected_terms else None,
-        blocking_issue=domain == "conditions" and _row_count(psynthea_table) == 0,
+        required=required,
+        blocking_issue=required and _row_count(psynthea_table) == 0,
     )
 
 
@@ -520,6 +535,7 @@ def _distributional_similarity_table(
     module_name: str,
     synthea_cohort: ValidationCohort,
     psynthea_cohort: ValidationCohort,
+    required_signal_domains: set[str],
 ) -> pd.DataFrame:
     """
     Compare coded distributions for core clinical domains.
@@ -531,6 +547,7 @@ def _distributional_similarity_table(
             domain,
             _get_table(synthea_cohort, domain),
             _get_table(psynthea_cohort, domain),
+            domain in required_signal_domains,
         )
         for domain in _DEFAULT_SIGNAL_TABLES
     ]
@@ -542,6 +559,7 @@ def _distributional_similarity(
     domain: str,
     synthea_table: pd.DataFrame | None,
     psynthea_table: pd.DataFrame | None,
+    required: bool,
 ) -> ModuleSimilarityResult:
     """
     Compare one coded event distribution.
@@ -578,7 +596,8 @@ def _distributional_similarity(
             else None
         ),
         valid_for_distributional_comparison=valid,
-        blocking_issue=domain == "conditions" and not valid,
+        required=required,
+        blocking_issue=required and not valid,
     )
 
 
@@ -634,14 +653,14 @@ def _issue_table(
             )
 
     for row in clinical_signal.itertuples(index=False):
-        if row.domain == "conditions" and row.synthea_signal_count == 0:
+        if row.required and row.synthea_signal_count == 0:
             rows.append(
                 _issue_row(
                     module_name,
                     "blocking",
                     row.domain,
                     ModuleValidationIssueType.REFERENCE_CLINICAL_SIGNAL_EMPTY.value,
-                    "Synthea produced no reference conditions for the module.",
+                    f"Synthea produced no reference {row.domain} for the module.",
                 )
             )
 
@@ -652,7 +671,7 @@ def _issue_table(
                     "blocking",
                     row.domain,
                     ModuleValidationIssueType.MISSING_CORE_CLINICAL_SIGNAL.value,
-                    "psynthea produced no conditions for the module.",
+                    f"psynthea produced no required {row.domain} for the module.",
                 )
             )
 
@@ -1002,20 +1021,8 @@ def _classify_module_status(
     issue_values = set(issues["issue"]) if not issues.empty else set()
     has_blocking = bool((issues["severity"] == "blocking").any()) if not issues.empty else False
 
-    synthea_condition_count = _domain_count(
-        clinical_signal,
-        "conditions",
-        "synthea_signal_count",
-    )
-    psynthea_condition_count = _domain_count(
-        clinical_signal,
-        "conditions",
-        "psynthea_signal_count",
-    )
-
     if (
         not synthea_functional
-        or synthea_condition_count == 0
         or ModuleValidationIssueType.REFERENCE_CLINICAL_SIGNAL_EMPTY.value in issue_values
     ):
         return (
@@ -1025,7 +1032,6 @@ def _classify_module_status(
 
     if (
         not psynthea_functional
-        or psynthea_condition_count == 0
         or ModuleValidationIssueType.MISSING_CORE_CLINICAL_SIGNAL.value in issue_values
     ):
         return (
@@ -1049,6 +1055,22 @@ def _classify_module_status(
         ModuleValidationStatus.COMPARABLE,
         "Both generators produced the required clinical signal and no validation issues were detected.",
     )
+
+
+def _normalise_required_signal_domains(
+    domains: Sequence[str] | None,
+) -> set[str]:
+    """Validate and normalize configured coded signal domains."""
+
+    configured = tuple(domains or ("conditions",))
+    normalized = {str(domain).strip().casefold() for domain in configured}
+    invalid = normalized.difference(_DEFAULT_SIGNAL_TABLES)
+    if invalid:
+        values = ", ".join(sorted(invalid))
+        raise ValueError(f"Unsupported required signal domain(s): {values}")
+    if not normalized:
+        raise ValueError("At least one required signal domain must be configured.")
+    return normalized
 
 
 def _all_required_tables_non_empty(

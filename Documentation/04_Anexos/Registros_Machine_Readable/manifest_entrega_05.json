@@ -1,0 +1,93 @@
+{
+  "package": "05_Anexos",
+  "project": "Validación científica Psynthea vs Synthea",
+  "institution": "IRYCIS",
+  "schema_version": 1,
+  "results_cutoff": "2026-07-30",
+  "document_edition": "2026-09-01",
+  "generated_at": "2026-09-01T21:10:13.869381+00:00",
+  "boundary": "Reference and provenance material only; no result recalculation.",
+  "documents": [
+    "00_Indice_de_Anexos.docx",
+    "00_Indice_de_Anexos.pdf",
+    "ANX-A_Glosario_y_Convenciones.docx",
+    "ANX-A_Glosario_y_Convenciones.pdf",
+    "ANX-B_Registro_de_Fuentes_y_Cronologia.docx",
+    "ANX-B_Registro_de_Fuentes_y_Cronologia.pdf",
+    "ANX-C_Referencia_Operativa_de_Ejecucion.docx",
+    "ANX-C_Referencia_Operativa_de_Ejecucion.pdf",
+    "ANX-D_Diccionario_de_Datos_y_Artefactos.docx",
+    "ANX-D_Diccionario_de_Datos_y_Artefactos.pdf",
+    "ANX-E_Matriz_de_Configuracion_y_Parametros.docx",
+    "ANX-E_Matriz_de_Configuracion_y_Parametros.pdf"
+  ],
+  "primary_sources": [
+    {
+      "id": "SRC-01",
+      "filename": "SRC-01_Plan_de_Validacion_Cientifica.pdf",
+      "sha256": "271007d4a7f73e470074bf694b46e239c7a68d7e43f6ec0348f7f4266c2dbb82",
+      "size_bytes": 50966
+    },
+    {
+      "id": "SRC-02",
+      "filename": "SRC-02_Documentacion_Synthea.pdf",
+      "sha256": "83d172999c71f104b2a5a2920adac3dc22ca84de55f1ec2b3f66758801a19269",
+      "size_bytes": 2242081
+    },
+    {
+      "id": "SRC-03",
+      "filename": "SRC-03_Documentacion_Psynthea.pdf",
+      "sha256": "cb70a8e37d31e7bdfdcd077ef74944eb9fc69a3a2cfdee52737305b2930afb76",
+      "size_bytes": 2465405
+    },
+    {
+      "id": "SRC-04",
+      "filename": "SRC-04_Actualizacion_Hypertension_y_Causa_Raiz.pdf",
+      "sha256": "029df2805b10bfae9d5320af212334a46fec286d25c9aba9c5b95202592f2010",
+      "size_bytes": 154139
+    },
+    {
+      "id": "SRC-05",
+      "filename": "SRC-05_Actualizacion_Estado_2026-07-27.pdf",
+      "sha256": "16a4896ebe1daa51b3ac17209a7f1e0cbd08700542ebc0c83ac75bbef3469609",
+      "size_bytes": 46361
+    },
+    {
+      "id": "SRC-06",
+      "filename": "SRC-06_Actualizacion_Demografia_2026-07-28.docx",
+      "sha256": "4db6ce924d97c44961ed4ed2a018031b536b8734680a8e172d2f0b4a43572c27",
+      "size_bytes": 45802
+    },
+    {
+      "id": "SRC-07",
+      "filename": "SRC-07_Actualizacion_Compatibilidad_Modulos.docx",
+      "sha256": "bfb70898f536891f738ede52a226ba6e33cac82fbd716c7ecb833e4fad194a99",
+      "size_bytes": 39062
+    },
+    {
+      "id": "SRC-08",
+      "filename": "SRC-08_Cierre_Campana_p1000_2026-07-30.docx",
+      "sha256": "e257f91a067cacf291deeae1dd688efc9a7d6f208b6052cd880ce1dc896a5422",
+      "size_bytes": 47094
+    },
+    {
+      "id": "SRC-09",
+      "filename": "SRC-09_Cierre_Wellness_2026-07-30.pdf",
+      "sha256": "573c2261e8619591b0cd8a63ea880a6c4fcd3bdcb0cab53f8b94625094ef1e5c",
+      "size_bytes": 189434
+    }
+  ],
+  "machine_readable_registers": [
+    "cronologia_hitos.csv",
+    "diccionario_campos.csv",
+    "glosario_controlado.csv",
+    "manifest_entrega_05.json",
+    "matriz_parametros.csv",
+    "registro_fuentes.csv"
+  ],
+  "dependencies": {
+    "methodology": "02_Memoria_Tecnica_Validacion",
+    "evidence": "03_Evidencias",
+    "technical_objects": "04_Artefactos"
+  }
+}

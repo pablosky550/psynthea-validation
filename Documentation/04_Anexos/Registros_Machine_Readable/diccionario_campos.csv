@@ -1,0 +1,43 @@
+﻿artifact,field_or_group,logical_type,definition,category
+patients.csv,Id,text,Identificador del paciente; clave de referencia desde las demás tablas.,CSV clínico
+patients.csv,BIRTHDATE,date,Fecha de nacimiento.,CSV clínico
+patients.csv,DEATHDATE,date/empty,Fecha de fallecimiento si se modeló y ocurrió.,CSV clínico
+patients.csv,GENDER,category,Sexo/género exportado por el simulador.,CSV clínico
+patients.csv,RACE,category,Categoría racial exportada.,CSV clínico
+patients.csv,ETHNICITY,category,Categoría étnica exportada.,CSV clínico
+encounters.csv,Id,text,Identificador del encuentro.,CSV clínico
+encounters.csv,PATIENT,text,Referencia a patients.Id.,CSV clínico
+encounters.csv,START / STOP,datetime,Inicio y fin del encuentro.,CSV clínico
+encounters.csv,ENCOUNTERCLASS,category,Clase del encuentro.,CSV clínico
+encounters.csv,CODE / DESCRIPTION,text,Código clínico y etiqueta legible.,CSV clínico
+conditions.csv,START / STOP,date/datetime,Intervalo de actividad de la condición.,CSV clínico
+conditions.csv,PATIENT / ENCOUNTER,text,Referencias al paciente y al encuentro asociado.,CSV clínico
+conditions.csv,CODE / DESCRIPTION,text,Código y descripción de la condición.,CSV clínico
+medications.csv,START / STOP,date/datetime,Intervalo de exposición o registro de medicación.,CSV clínico
+medications.csv,PATIENT / ENCOUNTER,text,Referencias al paciente y encuentro.,CSV clínico
+medications.csv,CODE / DESCRIPTION,text,Código y descripción de la medicación.,CSV clínico
+procedures.csv,START / STOP,date/datetime,Intervalo temporal del procedimiento.,CSV clínico
+procedures.csv,PATIENT / ENCOUNTER,text,Referencias al paciente y encuentro.,CSV clínico
+procedures.csv,CODE / DESCRIPTION,text,Código y descripción del procedimiento.,CSV clínico
+observations.csv,DATE,datetime,Fecha/hora de la observación.,CSV clínico
+observations.csv,PATIENT / ENCOUNTER,text,"Referencias al paciente y, cuando procede, al encuentro.",CSV clínico
+observations.csv,CODE / DESCRIPTION,text,Código y descripción de la observación.,CSV clínico
+observations.csv,VALUE / UNITS,mixed/text,Valor observado y unidad declarada.,CSV clínico
+observations.csv,CATEGORY,category,Categoría de la observación.,CSV clínico
+manifest.json,experiment_id / run_id,object/group,Identidad estable del experimento y de la ejecución.,Artefacto de pipeline
+manifest.json,config / config_sha256,object/group,Configuración y huella de integridad asociada.,Artefacto de pipeline
+manifest.json,producer / workspace / result,object/group,"Productor, espacio de trabajo y estado terminal.",Artefacto de pipeline
+validation_result.json,cohorts / cohort_comparison,object/group,Conteos y comparación global de las cohortes.,Artefacto de pipeline
+validation_result.json,modules / aggregate,object/group,Resultados por módulo y síntesis funcional/estadística.,Artefacto de pipeline
+knowledge_result.json,modules / aggregate,object/group,Hallazgos de conocimiento por módulo y síntesis.,Artefacto de pipeline
+root_cause_result.json,signals / candidates / findings,object/group,"Señales, causas candidatas y hallazgos estructurados.",Artefacto de pipeline
+root_cause_result.json,verifications / evidence / conclusion,object/group,"Comprobaciones, evidencia y conclusión causal acotada.",Artefacto de pipeline
+root_cause_result.json,limitations / unresolved_questions,object/group,Límites y cuestiones pendientes; obligatorios para interpretar la conclusión.,Artefacto de pipeline
+scientific_report.json,execution_provenance / stage_summary,object/group,Procedencia de ejecución y estado de cada etapa.,Artefacto de pipeline
+scientific_report.json,scientific_results / scientific_analysis,object/group,Resultados consolidados y análisis generado.,Artefacto de pipeline
+scientific_report.json,decision / executive_summary,object/group,Decisión agregada y síntesis legible.,Artefacto de pipeline
+campaign_state.json,config / population / module_count,object/group,Definición de la campaña.,Artefacto de pipeline
+campaign_state.json,attempts[],object/group,"Intentos por módulo: comando, timestamps, duración, retorno, estado y log.",Artefacto de pipeline
+module_campaign_summary.json,decision_counts / validation_status_counts,object/group,Distribuciones agregadas de decisiones y estados.,Artefacto de pipeline
+module_campaign_summary.json,modules[],object/group,Ficha estructurada de cada módulo agregado.,Artefacto de pipeline
+module_campaign_modules.csv,module_name … report_path,object/group,Vista tabular por módulo; 39 columnas para análisis y filtrado.,Artefacto de pipeline

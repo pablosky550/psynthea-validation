@@ -1,0 +1,22 @@
+﻿parameter,scope,cli_default,canonical_value,operational_effect
+population,Psynthea CLI / cohort,1,10 / 100 / 1.000,Número de pacientes; en campañas se aplica por módulo.
+seed,Psynthea CLI / cohort,0,42,Semilla reproducible de la configuración canónica.
+modules,cohort,Obligatorio al ejecutar,85 módulos explícitos,Subconjunto evaluado tras auditoría de compatibilidad.
+reference_date / end-date,cohort / Psynthea CLI,Fecha actual si no se indica,2024-12-31,Corte temporal común de las cohortes.
+min_age,Psynthea CLI / cohort,0,18,Edad mínima explícita.
+max_age,Psynthea CLI / cohort,100,90,Edad máxima explícita.
+step_days,Psynthea CLI / cohort,7,1,Paso temporal de simulación.
+years_of_history,Psynthea CLI / cohort,Sin recorte,10,Ventana de historia exportada.
+wellness_encounters,Psynthea CLI / cohort,false,true,Activa encuentros preventivos periódicos.
+vitals,Psynthea CLI / cohort,false,true,Activa signos vitales y observaciones asociadas.
+mortality,Psynthea CLI / cohort,false,true,Activa mortalidad de fondo por edad/sexo.
+keystone,Psynthea CLI / cohort,false,true,Inicializa atributos transversales requeridos por módulos.
+ground_truth,Psynthea CLI / cohort,false,false,No se habilitó en la campaña compatible canónica.
+output_format,Psynthea CLI / cohort,csv,csv,Formato clínico comparado.
+timeout_seconds,simuladores,Configurado por simulador,3.600,Límite por proceso en la configuración canónica.
+PYTHONHASHSEED,entorno Psynthea,No fijado,0,Reduce variación ligada al hash de Python.
+alpha,metadata.validation,N/A,"0,05",Umbral nominal de significación.
+confidence_level,metadata.validation,N/A,"0,95",Nivel de confianza declarado.
+fdr_method,metadata.validation,N/A,benjamini-hochberg,Corrección por comparaciones múltiples.
+continuous_effect_margin,metadata.validation,N/A,"0,2",Margen de efecto para variables continuas.
+categorical_effect_margin,metadata.validation,N/A,"0,1",Margen de efecto para variables categóricas.

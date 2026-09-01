@@ -660,16 +660,30 @@ def fisher_exact_test(
         alternative="two-sided",
     )
 
+    odds_ratio = float(statistic)
+    finite_odds_ratio = odds_ratio if isfinite(odds_ratio) else None
+    notes = None
+    if finite_odds_ratio is None:
+        notes = (
+            "Fisher exact odds ratio is infinite because the 2x2 table "
+            "contains a zero cell; the p-value remains valid."
+        )
+
     return StatisticalTestResult(
         test_name="fisher_exact",
-        statistic=float(statistic),
+        # Canonical reports prohibit non-finite JSON numbers. An infinite odds
+        # ratio is mathematically valid for complete separation, not corrupt
+        # evidence, so preserve the valid p-value and represent the estimate as
+        # unavailable with an explicit note.
+        statistic=finite_odds_ratio,
         p_value=float(p_value),
-        effect_size=float(statistic) if isfinite(float(statistic)) else None,
+        effect_size=finite_odds_ratio,
         effect_size_name="odds_ratio",
         n_synthea=int(table[0].sum()),
         n_psynthea=int(table[1].sum()),
         alpha=alpha,
         significant=_p_value_significant(float(p_value), alpha),
+        notes=notes,
     )
 
 

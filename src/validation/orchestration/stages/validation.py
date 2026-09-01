@@ -293,6 +293,8 @@ class ValidationStageHandler:
                     psynthea_cohort=cohorts[
                         SimulatorKind.PSYNTHEA
                     ],
+                    required_tables=module_settings["required_tables"],
+                    required_signal_domains=module_settings["required_signal_domains"],
                     expected_condition_terms=(
                         module_settings[
                             "expected_condition_terms"
@@ -1125,6 +1127,18 @@ def _module_settings(
 
     return MappingProxyType(
         {
+            "required_tables": (
+                _optional_terms(
+                    raw.get("required_tables"),
+                    f"{module_name}.required_tables",
+                )
+            ),
+            "required_signal_domains": (
+                _optional_terms(
+                    raw.get("required_signal_domains"),
+                    f"{module_name}.required_signal_domains",
+                )
+            ),
             "expected_condition_terms": (
                 _optional_terms(
                     raw.get(

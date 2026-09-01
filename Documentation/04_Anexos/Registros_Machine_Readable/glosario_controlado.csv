@@ -1,0 +1,42 @@
+﻿term,controlled_definition
+Synthea,Simulador de pacientes sintéticos implementado en Java y utilizado como referencia funcional y científica de comparación.
+Psynthea,Implementación Python evaluada en el proyecto. Ejecuta módulos compatibles con el Generic Module Framework y exporta cohortes sintéticas.
+Generic Module Framework (GMF),"Formato declarativo de módulos clínicos de Synthea basado en estados, transiciones, lógica y eventos."
+Parser GMF,Capa que transforma un módulo JSON del GMF en estructuras internas ejecutables por Psynthea.
+Representación intermedia (IR),Modelo interno tipado que separa la sintaxis del módulo de su ejecución por el motor.
+Motor de ejecución,"Componente que avanza la simulación, evalúa estados y transiciones y registra eventos clínicos."
+Scheduler,"Lógica que ordena y activa eventos en el tiempo de simulación, incluidos encuentros y transiciones demoradas."
+Lifecycle,Lógica transversal de ciclo de vida que inicializa o actualiza atributos y eventos generales del paciente fuera de un módulo clínico aislado.
+Keystone,Conjunto de atributos demográficos y conductuales iniciales requeridos por módulos que presuponen la inicialización realizada por Synthea.
+Estado,"Unidad ejecutable de un módulo GMF; puede crear un evento, asignar un atributo, invocar un submódulo o controlar el flujo."
+Transición,"Regla que determina el siguiente estado, de forma directa, probabilística, condicional o compleja."
+CallSubmodule,Estado GMF que delega la ejecución en otro módulo y retorna al flujo llamante cuando finaliza.
+PriorState.within,Predicado temporal que comprueba si un estado previo ocurrió dentro de una ventana de tiempo determinada.
+Wellness encounter,Encuentro preventivo programado por la lógica global; puede habilitar la ejecución de módulos que esperan una consulta periódica.
+Vitals,Generación opcional de signos vitales fisiológicos y su registro como observaciones durante encuentros wellness.
+Cohorte,Conjunto de pacientes generado por un simulador bajo una configuración común.
+Experimento,"Ejecución orquestada de ambos simuladores, normalización, validación, análisis de conocimiento, causa raíz e informe."
+Run,"Instancia identificada e inmutable de un experimento, con manifiesto y artefactos asociados."
+Campaña,"Colección controlada de experimentos, normalmente uno por módulo y tamaño poblacional."
+p10 / p100 / p1000,"Convención del proyecto para campañas de 10, 100 y 1.000 pacientes por módulo, respectivamente."
+Seed,Semilla pseudoaleatoria que permite repetir el mismo muestreo bajo una implementación y configuración determinadas.
+Normalización,Transformación de las salidas heterogéneas de los simuladores a estructuras comparables sin alterar el significado clínico declarado.
+Comparación funcional,"Comprobación de integridad, presencia de entidades y capacidad de producir eventos esperables."
+Comparación estadística,"Evaluación cuantitativa de diferencias mediante tamaños de efecto, intervalos, pruebas y corrección por multiplicidad."
+Root Cause Analysis (RCA),"Análisis estructurado que relaciona una discrepancia observada con hipótesis, señales, verificaciones y limitaciones."
+Scientific Knowledge Report,Resultado del pipeline que contrasta hallazgos con reglas y conocimiento definidos para interpretar su relevancia.
+Alpha,"Umbral nominal de significación estadística. La configuración canónica fija α=0,05."
+FDR / Benjamini–Hochberg,Control de la tasa de falsos descubrimientos aplicado a múltiples comparaciones.
+Margen de efecto,"Umbral práctico configurado para valorar magnitud: 0,2 en variables continuas y 0,1 en categóricas."
+Comparable,Estado interno que indica que existen datos suficientes y condiciones válidas para realizar la comparación prevista.
+Partially comparable,Estado interno que indica comparabilidad limitada a una parte de las dimensiones o entidades.
+Reference empty,Estado en el que Synthea no produjo eventos de referencia para la dimensión evaluada; impide inferir equivalencia.
+Psynthea functional failure,Estado que señala un fallo funcional atribuido a la salida de Psynthea según las reglas del pipeline.
+REVIEW,Decisión agregada que requiere interpretación experta; no equivale por sí sola a error de implementación.
+NOT_COMPARABLE,Decisión agregada que indica que la evidencia disponible no permite una comparación válida.
+Research-use-ready,Criterio global conservador del pipeline. Su valor falso no significa que todo resultado sea inútil; impide una aprobación general automática.
+Manifest,"Documento JSON de control que identifica configuración, ejecución, resultado y rutas de artefactos de un run."
+Configuración resuelta,Configuración efectiva después de aplicar valores del archivo y overrides de línea de comandos.
+Scientific report,"Informe JSON/HTML consolidado que resume procedencia, etapas, resultados y decisión de un experimento."
+Agregado de campaña,Resumen JSON/CSV/Markdown construido exclusivamente a partir de los runs exitosos declarados en campaign_state.json.
+SHA-256,Función hash utilizada para verificar integridad de archivos y detectar cambios de contenido.

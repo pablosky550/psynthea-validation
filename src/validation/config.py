@@ -115,6 +115,8 @@ class ModuleConfig:
     """Expected clinical signals for one independently validated module."""
 
     name: str
+    required_tables: tuple[str, ...] = ()
+    required_signal_domains: tuple[str, ...] = ()
     expected_condition_terms: tuple[str, ...] = ()
     expected_medication_terms: tuple[str, ...] = ()
     expected_procedure_terms: tuple[str, ...] = ()
@@ -122,6 +124,16 @@ class ModuleConfig:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _normalise_required_text(self.name, "name"))
+        object.__setattr__(
+            self,
+            "required_tables",
+            _normalise_terms(self.required_tables),
+        )
+        object.__setattr__(
+            self,
+            "required_signal_domains",
+            _normalise_terms(self.required_signal_domains),
+        )
         object.__setattr__(
             self,
             "expected_condition_terms",

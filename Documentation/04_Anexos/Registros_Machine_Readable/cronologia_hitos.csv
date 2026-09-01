@@ -1,0 +1,9 @@
+﻿milestone_id,date_or_interval,milestone,source_ids,nature
+H-00,No consignada,Plan de validación científica,SRC-01,Protocolo
+H-01,Antes de 2026-07-27; fecha exacta no consignada,"Baseline, multiseed e investigación Hypertension",SRC-04;SRC-05,Investigación
+H-02,2026-07-27,Estado del pipeline e hipótesis contrastadas,SRC-05,Corte documental
+H-03,2026-07-28,Corrección de semántica demográfica,SRC-06,Corte documental
+H-04,No consignada,Auditoría estática y runtime de 85 módulos,SRC-07,Sesión técnica
+H-05,2026-07-29T10:45:17Z/2026-07-29T13:06:09Z,Ejecución de campaña p1000,SRC-08,Ventana de ejecución
+H-06,2026-07-30,Consolidación final p1000,SRC-08,Corte documental
+H-07,2026-07-30,Corrección Wellness/PriorState.within y cierre de desarrollo,SRC-09,Corte documental

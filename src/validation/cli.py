@@ -691,6 +691,8 @@ def _run_comparisons(
                 module_name=module.name,
                 synthea_cohort=synthea_cohort,
                 psynthea_cohort=psynthea_cohort,
+                required_tables=module.required_tables or None,
+                required_signal_domains=module.required_signal_domains or None,
                 expected_condition_terms=module.expected_condition_terms,
                 expected_medication_terms=module.expected_medication_terms,
                 expected_procedure_terms=module.expected_procedure_terms,

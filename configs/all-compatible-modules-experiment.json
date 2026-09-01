@@ -175,7 +175,26 @@
       "confidence_level": 0.95,
       "fdr_method": "benjamini-hochberg",
       "continuous_effect_margin": 0.2,
-      "categorical_effect_margin": 0.1
+      "categorical_effect_margin": 0.1,
+      "modules": {
+        "wellness_encounters": {
+          "required_tables": [
+            "patients",
+            "encounters",
+            "observations"
+          ],
+          "required_signal_domains": [
+            "observations"
+          ],
+          "expected_observation_terms": [
+            "8302-2",
+            "29463-7",
+            "39156-5",
+            "8480-6",
+            "8462-4"
+          ]
+        }
+      }
     }
   }
 }

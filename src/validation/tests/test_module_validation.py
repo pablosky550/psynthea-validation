@@ -301,3 +301,38 @@ def test_jensen_shannon_divergence_rejects_materially_negative_value(
         assert "materially negative" in str(error)
     else:
         raise AssertionError("Expected materially negative divergence to fail")
+
+
+def test_observation_centric_module_does_not_require_conditions() -> None:
+    synthea = _cohort(source=SOURCE_SYNTHEA, conditions=_empty_like([CONDITION_PATIENT_COLUMN, CONDITION_CODE_COLUMN, CONDITION_DESCRIPTION_COLUMN]))
+    psynthea = _cohort(source=SOURCE_SYNTHEA, conditions=_empty_like([CONDITION_PATIENT_COLUMN, CONDITION_CODE_COLUMN, CONDITION_DESCRIPTION_COLUMN]))
+
+    result = validate_independent_module(
+        module_name="wellness_encounters",
+        synthea_cohort=synthea,
+        psynthea_cohort=psynthea,
+        required_tables=("patients", "encounters", "observations"),
+        required_signal_domains=("observations",),
+    )
+
+    assert result.summary.iloc[0]["status"] == ModuleValidationStatus.COMPARABLE.value
+    observation = result.clinical_signal.query("domain == 'observations'").iloc[0]
+    assert bool(observation["required"]) is True
+
+
+def test_observation_centric_module_fails_when_observations_are_empty() -> None:
+    synthea = _cohort(source=SOURCE_SYNTHEA, conditions=_empty_like([CONDITION_PATIENT_COLUMN, CONDITION_CODE_COLUMN, CONDITION_DESCRIPTION_COLUMN]))
+    psynthea = _cohort(source=SOURCE_PSYNTHEA, conditions=_empty_like([CONDITION_PATIENT_COLUMN, CONDITION_CODE_COLUMN, CONDITION_DESCRIPTION_COLUMN]), observations=_empty_like([OBSERVATION_PATIENT_COLUMN, OBSERVATION_CODE_COLUMN, OBSERVATION_DESCRIPTION_COLUMN]))
+
+    result = validate_independent_module(
+        module_name="wellness_encounters",
+        synthea_cohort=synthea,
+        psynthea_cohort=psynthea,
+        required_tables=("patients", "encounters", "observations"),
+        required_signal_domains=("observations",),
+    )
+
+    assert (
+        result.summary.iloc[0]["status"]
+        == ModuleValidationStatus.PSYNTHEA_FUNCTIONAL_FAILURE.value
+    )
